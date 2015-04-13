@@ -1,8 +1,8 @@
 module Fluent
-  class SpectrumOtherOut < Output
+  class SpectrumOutIntegrate < Output
     # First, register the plugin. NAME is the name of this plugin
     # and identifies the plugin in the configuration file.
-    Fluent::Plugin.register_output('spectrum_other', self)
+    Fluent::Plugin.register_output('spectrum_integrate', self)
     
     config_param :tag, :string, default:'alert.spectrum.out' 
     #config_param :tag, :string, :default => "alert.spectrum"
@@ -38,13 +38,32 @@ module Fluent
       end
     end
 
+    ## TODO abstract this method----not work yet!!!!
+    # def read_rename_mapping_to_hash(searchkeyword, array, key_searchkeyword, key_new)
+    #   conf_searchkeys = conf.keys.select { |k| k =~ /^searchkeyword(\d+)$/ }
+    #   conf_searchkeys.sort_by { |r| r.sub('searchkeyword', '').to_i }.each do |r|
+    #     key_searchkeyword, key_new = parse_searchkeys conf[r]
 
+    #     if key_searchkeyword.nil? || key_new.nil?
+    #       raise Fluent::ConfigError, "Failed to parse: #{r} #{conf[r]}"
+    #     end
+
+    #     if @searchkeys.map { |r| r[:key_searchkeyword] }.include? /#{key_searchkeyword}/
+    #       raise Fluent::ConfigError, "Duplicated rules for key #{key_searchkeyword}: #{@searchkeys}"
+    #     end
+
+    #     @searchkeys << { key_searchkeyword: key_searchkeyword, key_new: key_new }
+    #     $log.info "Added searchkeys: #{r} #{@searchkeys.last}"
+    #   end
+    # end
 
     # This method is called before starting.
     def configure(conf)
       super 
       # Read property file for varbinds and create a hash
       @varbinds = []
+      # TO DO-- use a commom method
+      #read_rename_mapping_to_hash(varind, @varbinds, key_varbind, key_source)
       conf_varbinds = conf.keys.select { |k| k =~ /^varbind(\d+)$/ }
       conf_varbinds.sort_by { |r| r.sub('varbind', '').to_i }.each do |r|
         key_varbind, key_source = parse_rename_rule conf[r]
@@ -113,12 +132,13 @@ module Fluent
       es.each {|time,record|
         $stderr.puts "OK!"
         ## Check if the incoming event already has an event id (alarm id) and a corresponding tag of spectrum 
-        if record["event"].has_key?("event_type")  
-          # If the value on event_type is not spectrum, then it means that it is from 3rd party, needs to post new alert   
-          # if (!record["event"]["event_type"].has_value?("alert.processed.spectrum"))
-          if (record["event"]["event_type"] != "alert.processed.spectrum")
+        if record["event"].has_key?("event_type")
 
-            ######Step 1 ########################
+          ######3rd party alert, need 2 steps #######################   
+          if (record["event"]["event_type"] != "alert.processed.spectrum")
+            $log.info "The alert is from 3rd party"
+
+            ######3rd party alert Step 1 ########################
             ######Post an event and then trigger an alarm 
 
       			# Create an empty hash
@@ -178,7 +198,7 @@ module Fluent
             end
 
 
-            ######Step 2 ########################
+            ######3rd party alert Step 2 ########################
             ######PUT alarm to update enriched fields
             # Create an empty hash
             alertUpdateHash=Hash.new
@@ -212,16 +232,59 @@ module Fluent
             if debug_put_alarm 
               $log.info "debug mode, not PUT alarm yet"
             else
-              begin
-                # alarmPutRes = resource.put @alarms_urlrest,:content_type => 'application/json' 
+              begin 
+                # alarmPutRes = resource.put @alarms_urlrest,:content_type => 'application/json'
                 alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
                 $log.info alarmPutRes 
               end
             end
 
-          else # if it is spectrum native alerts
-            # For now just throw to stdout
-            $log.info record["event"]
+
+          ######native spectrum alert ########################
+          ######PUT alarm to update enriched fields
+          else 
+            $log.info "The alert is from spectrum"
+            # Create an empty hash
+            alertUpdateHash=Hash.new
+
+            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+            @rename_rules.each { |rule| 
+              pp rule[:new_key]
+              alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
+            }
+
+            # construct the alarms PUT uri for update triggerd alarm withe enriched fields
+            # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
+            @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
+            @attr_count = 0
+            alertUpdateHash.each do |attr, val| 
+              if (val.nil? || val.empty?)
+                next
+              else
+                if (@attr_count == 0)
+                  @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                  @attr_count +=1
+                else
+                  @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                  @attr_count +=1
+                end
+              end
+            end
+
+            $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+            
+            if debug_put_alarm 
+              $log.info "debug mode, not PUT alarm yet"
+            else
+              begin 
+                # alarmPutRes = resource.put @alarms_urlrest,:content_type => 'application/json'
+                alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                $log.info alarmPutRes 
+              end
+            end
+
+
+
 
           end #end of if 'event_type' is 'alert.processed.spectrum'
 
