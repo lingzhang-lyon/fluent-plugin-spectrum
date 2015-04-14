@@ -7,10 +7,11 @@ module Fluent
     config_param :endpoint, :string, :default => "pleasechangeme.com" #fqdn of endpoint
     config_param :user, :string, :default => "username"
     config_param :pass, :string, :default => "password"
+    config_param :interval, :integer, :default => '300' #Default 5 minutes
     config_param :model_mh, :string, :default => "model_mh"
     config_param :event_type_id, :string, :default => "event_type_id"
     config_param :spectrum_key, :string, :default => "event_type" # key in the alert to check if alert is from spectrum
-    config_param :spectrum_value :string, :default => "alert.raw.spectrum"# value to match is its from spectrum
+    config_param :spectrum_value, :string, :default => "alert.raw.spectrum"# value to match is its from spectrum
 
     def initialize
       require 'rest-client'
@@ -29,17 +30,17 @@ module Fluent
       super 
       # Read configuration for varbinds and create a hash
       @varbind_rename_rules = []
-      conf_varbinds = conf.keys.select { |k| k =~ /^varbind(\d+)$/ }
-      conf_varbinds.sort_by { |r| r.sub('varbind', '').to_i }.each do |r|
+      conf_varbinds_rename_rules = conf.keys.select { |k| k =~ /^varbind(\d+)$/ }
+      conf_varbinds_rename_rules.sort_by { |r| r.sub('varbind', '').to_i }.each do |r|
         key_varbind, key_source = parse_rename_rule conf[r]
         if key_varbind.nil? || key_source.nil?
           raise Fluent::ConfigError, "Failed to parse: #{r} #{conf[r]}"
         end
-        if @varbinds.map { |r| r[:key_varbind] }.include? /#{key_varbind}/
-          raise Fluent::ConfigError, "Duplicated rules for key #{key_varbind}: #{@varbinds}"
+        if @varbind_rename_rules.map { |r| r[:key_varbind] }.include? /#{key_varbind}/
+          raise Fluent::ConfigError, "Duplicated rules for key #{key_varbind}: #{@varbind_rename_rules}"
         end
-        @varbinds << { key_varbind: key_varbind, key_source: key_source }
-        $log.info "Added varbinds: #{r} #{@varbinds.last}"
+        @varbind_rename_rules << { key_varbind: key_varbind, key_source: key_source }
+        $log.info "Added varbind_rename_rules: #{r} #{@varbind_rename_rules.last}"
       end
       # Read configuration for rename_rules and create a hash
       @rename_rules = []
@@ -88,146 +89,92 @@ module Fluent
       chain.next
       es.each {|time,record|
         $stderr.puts "OK!"
+
         ######native spectrum alert ########################
         ######PUT alarm to update enriched fields
         if (record["event"].has_key?(@spectrum_key) && record["event"][@spectrum_key] == @spectrum_value) 
           
           $log.info "The alert is from spectrum"
-          # if debug_off_native_spectrum
-          #   $log.info record["event"]
-          # else
-            # Create an empty hash
-            alertUpdateHash=Hash.new
-            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            @rename_rules.each { |rule| 
-              pp rule[:new_key]
-              alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
-            }
-            # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-            # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
-            @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
-            @attr_count = 0
-            alertUpdateHash.each do |attr, val| 
-              if (val.nil? || val.empty?)
-                next
-              else
-                if (@attr_count == 0)
-                  @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                  @attr_count +=1
-                else
-                  @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                  @attr_count +=1
-                end
-              end
-            end
-            $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
-            
-            if debug_off_put_alarm 
-              $log.info "debug mode, not PUT alarm yet"
+          # Create an empty hash
+          alertUpdateHash=Hash.new
+          # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+          @rename_rules.each { |rule| 
+            pp rule[:new_key]
+            alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
+          }
+          # construct the alarms PUT uri for update triggerd alarm withe enriched fields
+          # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
+          @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
+          @attr_count = 0
+          alertUpdateHash.each do |attr, val| 
+            if (val.nil? || val.empty?)
+              next
             else
-              begin 
-                alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
-                # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-                $log.info alarmPutRes 
-              end
-            end
-          # end # end of if debug_off_native_spectrum
-        ######3rd party alert, need 2 steps #######################   
-        else
-          $log.info "The alert is from 3rd party"
-          # if debug_off_3rd_party
-          #   $log.info record["event"]
-          # else 
-            ######3rd party alert Step 1 ########################
-            ######Post an event and then trigger an alarm 
-                  # Create an empty hash
-            alertNewHash=Hash.new
-            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            @varbinds.each { |varbind| 
-              pp varbind[:key_varbind]+varbind[:key_source]
-              alertNewHash[varbind[:key_varbind]]=record["event"][varbind[:key_source]]
-            }
-            # construct the xml
-            @post_event_xml ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-            <rs:event-request throttlesize=\"10\"
-              xmlns:rs=\"http://www.ca.com/spectrum/restful/schema/request\"
-              xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
-              xsi:schemaLocation=\"http://www.ca.com/spectrum/restful/schema/request ../../../xsd/Request.xsd\">
-              <rs:event>
-                <rs:target-models>
-                 <rs:model mh= \"#{model_mh}\" />
-                </rs:target-models>
-             
-               <!-- event ID -->
-                <rs:event-type id=\"#{event_type_id}\"/>
-             
-                <!-- attributes/varbinds -->"
-            alertNewHash.each do |attr, val| 
-              if (val.nil? || val.empty?)
-                @post_event_xml += "\n <rs:varbind id=\""+ attr + "\"></rs:varbind>"
+              if (@attr_count == 0)
+                @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                @attr_count +=1
               else
-                @post_event_xml += "\n <rs:varbind id=\""+ attr + "\">"+ CGI.escapeHTML(val) +"</rs:varbind>"
+                @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                @attr_count +=1
               end
             end
-            @post_event_xml += "
-                    </rs:event>
-                  </rs:event-request>"
-            @triggered_event_id = ''
-            $log.info "Rest url for post events: " + @events_url               
-            # if debug_off_post_event
-            #   $log.info "xml: " +@post_event_xml
-            #   $log.info "debug mode, not PUT alarm yet"    
-            #   @triggered_event_id = 'test12345'
-            #   $log.info @triggered_event_id
-            # else
-              $log.info "xml: " +@post_event_xml    
-              begin        
-                # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
-                eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
-                $log.info eventPostRes
-                eventPostResBody = JSON.parse(eventPostRes.body)
-                @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
-                $log.info @triggered_event_id
-              end
-            # end
-            ######3rd party alert Step 2 ########################
-            ######PUT alarm to update enriched fields
-            # Create an empty hash
-            # alertUpdateHash=Hash.new
-            # # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            # @rename_rules.each { |rule| 
-            #   pp rule[:new_key]
-            #   alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
-            # }
-            # # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-            # # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
-            # @alarms_urlrest = @alarms_url + @triggered_event_id
-            # @attr_count = 0
-            # alertUpdateHash.each do |attr, val| 
-            #   if (val.nil? || val.empty?)
-            #     next
-            #   else
-            #     if (@attr_count == 0)
-            #       @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-            #       @attr_count +=1
-            #     else
-            #       @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-            #       @attr_count +=1
-            #     end
-            #   end
-            # end
-            # $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
-            
-            # # if debug_off_put_alarm 
-            # #   $log.info "debug mode, not PUT alarm yet"
-            # # else
-            #   begin 
-            #     # alarmPutRes = resource.put @alarms_urlrest,:content_type => 'application/json'
-            #     alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-            #     $log.info alarmPutRes 
-            #   end
-            # # end
-          # end #end of if debug_off_3rd_party or not
+          end
+          $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+          
+          begin 
+            # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
+            alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+            $log.info alarmPutRes 
+          end
+
+        ######3rd party alert #######################
+        ######Post an event and then trigger an alarm ######   
+        else
+          $log.info "The alert is from 3rd party"           
+          # Create an empty hash
+          alertNewHash=Hash.new
+          # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+          @varbind_rename_rules.each { |varbind| 
+            pp varbind[:key_varbind]+varbind[:key_source]
+            alertNewHash[varbind[:key_varbind]]=record["event"][varbind[:key_source]]
+          }
+          # construct the xml
+          @post_event_xml ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+          <rs:event-request throttlesize=\"10\"
+            xmlns:rs=\"http://www.ca.com/spectrum/restful/schema/request\"
+            xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
+            xsi:schemaLocation=\"http://www.ca.com/spectrum/restful/schema/request ../../../xsd/Request.xsd\">
+            <rs:event>
+              <rs:target-models>
+               <rs:model mh= \"#{model_mh}\" />
+              </rs:target-models>
+           
+             <!-- event ID -->
+              <rs:event-type id=\"#{event_type_id}\"/>
+           
+              <!-- attributes/varbinds -->"
+          alertNewHash.each do |attr, val| 
+            if (val.nil? || val.empty?)
+              @post_event_xml += "\n <rs:varbind id=\""+ attr + "\"></rs:varbind>"
+            else
+              @post_event_xml += "\n <rs:varbind id=\""+ attr + "\">"+ CGI.escapeHTML(val) +"</rs:varbind>"
+            end
+          end
+          @post_event_xml += "
+                  </rs:event>
+                </rs:event-request>"
+          @triggered_event_id = ''
+          $log.info "Rest url for post events: " + @events_url               
+          $log.info "xml: " +@post_event_xml    
+          begin        
+            # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
+            eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
+            $log.info eventPostRes
+            eventPostResBody = JSON.parse(eventPostRes.body)
+            @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
+            $log.info "event id is: " + @triggered_event_id
+          end
+
         end #end of if 'event_type' is 'alert.processed.spectrum' or not
       } # end of loop for each record
     end  #end of emit
