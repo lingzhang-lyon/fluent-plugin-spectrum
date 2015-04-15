@@ -12,19 +12,29 @@ module Fluent
     config_param :event_type_id, :string, :default => "event_type_id"
     config_param :spectrum_key, :string, :default => "event_type" # key in the alert to check if alert is from spectrum
     config_param :spectrum_value, :string, :default => "alert.raw.spectrum"# value to match is its from spectrum
+    config_param :alarm_ID_key, :string, :default => "source_event_id" # key in the alert that associate with alarm_ID for calling spectrum PUT alarms api 
 
     def initialize
       require 'rest-client'
       require 'json'
-      require 'pp'
-      require 'cgi' # verify we need
+      require 'pp'  # just for debug, could be removed
+      require 'cgi' # verify we need --yes, we need it, to_utf8 could not used to create valid url and xml
       super
     end # def initialize
+
+    # function to UTF8 encode
+    def to_utf8(str)
+      str = str.force_encoding('UTF-8')
+      return str if str.valid_encoding?
+      str.encode("UTF-8", 'binary', invalid: :replace, undef: :replace, replace: '')
+    end
+
     def parse_rename_rule rule
       if rule.match /^([^\s]+)\s+(.+)$/
         return $~.captures
       end
     end
+
     # This method is called before starting.
     def configure(conf)
       super 
@@ -89,93 +99,99 @@ module Fluent
       chain.next
       es.each {|time,record|
         $stderr.puts "OK!"
-
-        ######native spectrum alert ########################
-        ######PUT alarm to update enriched fields
-        if (record["event"].has_key?(@spectrum_key) && record["event"][@spectrum_key] == @spectrum_value) 
-          
-          $log.info "The alert is from spectrum"
-          # Create an empty hash
-          alertUpdateHash=Hash.new
-          # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-          @rename_rules.each { |rule| 
-            pp rule[:new_key]
-            alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
-          }
-          # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-          # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
-          @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]
-          @attr_count = 0
-          alertUpdateHash.each do |attr, val| 
-            if (val.nil? || val.empty?)
-              next
-            else
-              if (@attr_count == 0)
-                @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                @attr_count +=1
+        if (record["event"].has_key?(@alarm_ID_key) && record["event"].has_key?(@spectrum_key) ) 
+          ######native spectrum alert ########################
+          ######PUT alarm to update enriched fields
+          if (record["event"][@spectrum_key] == @spectrum_value) 
+            $log.info "The alert is from spectrum"
+            # Create an empty hash
+            alertUpdateHash=Hash.new
+            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+            @rename_rules.each { |rule| 
+              pp rule[:new_key]
+              alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
+            }
+            # construct the alarms PUT uri for update triggerd alarm withe enriched fields
+            @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
+            @attr_count = 0
+            alertUpdateHash.each do |attr, val| 
+              if (val.nil? || val.empty?)
+                next
               else
-                @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                @attr_count +=1
+                if (@attr_count == 0)
+                  @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                  # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
+                  @attr_count +=1
+                else
+                  @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                  # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
+                  @attr_count +=1
+                end
               end
             end
-          end
-          $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
-          
-          begin 
-            # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
-            alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-            $log.info alarmPutRes 
-          end
-
-        ######3rd party alert #######################
-        ######Post an event and then trigger an alarm ######   
-        else
-          $log.info "The alert is from 3rd party"           
-          # Create an empty hash
-          alertNewHash=Hash.new
-          # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-          @varbind_rename_rules.each { |varbind| 
-            pp varbind[:key_varbind]+varbind[:key_source]
-            alertNewHash[varbind[:key_varbind]]=record["event"][varbind[:key_source]]
-          }
-          # construct the xml
-          @post_event_xml ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-          <rs:event-request throttlesize=\"10\"
-            xmlns:rs=\"http://www.ca.com/spectrum/restful/schema/request\"
-            xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
-            xsi:schemaLocation=\"http://www.ca.com/spectrum/restful/schema/request ../../../xsd/Request.xsd\">
-            <rs:event>
-              <rs:target-models>
-               <rs:model mh= \"#{model_mh}\" />
-              </rs:target-models>
-           
-             <!-- event ID -->
-              <rs:event-type id=\"#{event_type_id}\"/>
-           
-              <!-- attributes/varbinds -->"
-          alertNewHash.each do |attr, val| 
-            if (val.nil? || val.empty?)
-              @post_event_xml += "\n <rs:varbind id=\""+ attr + "\"></rs:varbind>"
-            else
-              @post_event_xml += "\n <rs:varbind id=\""+ attr + "\">"+ CGI.escapeHTML(val) +"</rs:varbind>"
+            $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+            
+            begin 
+              # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
+              alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+              $log.info alarmPutRes 
             end
-          end
-          @post_event_xml += "
-                  </rs:event>
-                </rs:event-request>"
-          @triggered_event_id = ''
-          $log.info "Rest url for post events: " + @events_url               
-          $log.info "xml: " +@post_event_xml    
-          begin        
-            # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
-            eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
-            $log.info eventPostRes
-            eventPostResBody = JSON.parse(eventPostRes.body)
-            @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
-            $log.info "event id is: " + @triggered_event_id
-          end
 
-        end #end of if 'event_type' is 'alert.processed.spectrum' or not
+          ######3rd party alert #######################
+          ######Post an event and then trigger an alarm ######   
+          else
+            $log.info "The alert is from 3rd party"           
+            # Create an empty hash
+            alertNewHash=Hash.new
+            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+            @varbind_rename_rules.each { |varbind| 
+              pp varbind[:key_varbind]+varbind[:key_source]
+              alertNewHash[varbind[:key_varbind]]=record["event"][varbind[:key_source]]
+            }
+            # construct the xml
+            @post_event_xml ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+            <rs:event-request throttlesize=\"10\"
+              xmlns:rs=\"http://www.ca.com/spectrum/restful/schema/request\"
+              xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
+              xsi:schemaLocation=\"http://www.ca.com/spectrum/restful/schema/request ../../../xsd/Request.xsd\">
+              <rs:event>
+                <rs:target-models>
+                 <rs:model mh= \"#{model_mh}\" />
+                </rs:target-models>
+             
+               <!-- event ID -->
+                <rs:event-type id=\"#{event_type_id}\"/>
+             
+                <!-- attributes/varbinds -->"
+            alertNewHash.each do |attr, val| 
+              if (val.nil? || val.empty?)
+                @post_event_xml += "\n <rs:varbind id=\""+ attr + "\"></rs:varbind>"
+              else
+                @post_event_xml += "\n <rs:varbind id=\""+ attr + "\">"+ CGI.escapeHTML(val) +"</rs:varbind>"
+              end
+            end
+            @post_event_xml += "
+                    </rs:event>
+                  </rs:event-request>"
+            @triggered_event_id = ''
+            $log.info "Rest url for post events: " + @events_url               
+            $log.info "xml: " +@post_event_xml    
+            begin        
+              # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
+              eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
+              $log.info eventPostRes
+              eventPostResBody = JSON.parse(eventPostRes.body)
+              @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
+              $log.info "event id is: " + @triggered_event_id
+            end
+
+          end #end of checking alerts is from 3rd party or spectrum
+          
+        else # if don't have @alarm_ID_key and @spectrum_key
+          $log.info "The alert don't have 'alarm_ID_key' and 'spectrum_key' "
+          $log.info record["event"]
+        end 
+
       } # end of loop for each record
     end  #end of emit
   end #end of class SpectrumOtherOut 
