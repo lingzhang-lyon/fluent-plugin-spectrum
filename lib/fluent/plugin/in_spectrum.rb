@@ -8,6 +8,7 @@ module Fluent
     config_param  :endpoint,      :string,  :default => nil
     config_param  :username,      :string,  :default => nil
     config_param  :password,      :string,  :default => nil
+    config_param  :state_type,    :string,  :default => nil
     config_param  :state_file,    :string,  :default => nil
     config_param  :attributes,    :string,  :default => "ALL"
     config_param  :interval,      :integer, :default => INTERVAL_MIN
@@ -29,45 +30,6 @@ module Fluent
       end # def on_timer
     end
 
-    class StateStore
-      def initialize(path)
-        require 'yaml'
-        @path = path
-        if File.exists?(@path)
-          @data = YAML.load_file(@path)
-          if @data == false || @data == []
-            @data = {}
-          elsif !@data.is_a?(Hash)
-            raise "Spectrum :: ConfigError state_file on #{@path.inspect} is invalid"
-          end
-        else
-          @data = {}
-        end
-      end
-
-      def last_records
-        @data['last_records'] ||= {}
-      end
-
-      def update!
-        File.open(@path, 'w') {|f|
-          f.write YAML.dump(@data)
-        }
-      end
-    end
-
-    class MemoryStateStore
-      def initialize
-        @data = {}
-      end
-      
-      def last_records
-        @data['last_records'] ||= {}
-      end
-      
-      def update!
-      end
-    end
 
     # function to UTF8 encode
     def to_utf8(str)
@@ -85,6 +47,7 @@ module Fluent
     def initialize
       require 'rest-client'
       require 'json'
+      require 'highwatermark'
       super
     end # def initialize
 
@@ -163,7 +126,8 @@ module Fluent
 
     def start
       @stop_flag = false
-      @state_store = @state_file.nil? ? MemoryStateStore.new : StateStore.new(@state_file)
+      # @state_store = @state_file.nil? ? MemoryStateStore.new : StateStore.new(@state_file)
+      @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type, @tag)
       @loop = Coolio::Loop.new
       @loop.attach(TimerWatcher.new(@interval, true, &method(:on_timer)))
       @thread = Thread.new(&method(:run))
@@ -186,8 +150,8 @@ module Fluent
     def on_timer
       if not @stop_flag
         pollingStart = Engine.now.to_i
-        if @state_store.last_records.has_key?("spectrum") 
-          alertStartTime = @state_store.last_records['spectrum']
+        if @highwatermark.last_records()
+          alertStartTime = @highwatermark.last_records()
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
         end
@@ -218,7 +182,6 @@ module Fluent
           res=resource.post @xml,:content_type => 'application/xml',:accept => 'application/json'
           body = JSON.parse(res.body)
           pollingEnd = Time.parse(res.headers[:date]).to_i
-          @state_store.last_records['spectrum'] = pollingEnd
           pollingDuration = Engine.now.to_i - pollingStart
         end  
 
@@ -273,7 +236,7 @@ module Fluent
         else
           $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
         end
-        @state_store.update!  
+        @highwatermark.update_records(pollingEnd)
       end
     end # def input
   end # class SpectrumInput
