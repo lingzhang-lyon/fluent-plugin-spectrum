@@ -25,6 +25,9 @@ Or install it yourself as:
     $ gem install fluent-plugin-spectrum
 
 ## Usage
+
+### Input plugin
+
 Add the following into your fluentd config.
 
 Simple:
@@ -32,8 +35,8 @@ Simple:
     <source>
       type spectrum
       endpoint spectrum.yourdomain.com 	# required, FQDN of endpoint
-      user username  # required
-      pass password  # required
+      username username  # required
+      password password  # required
       interval 60    # optional, interval in seconds, defaults to 300
     </source>
     <match alert.spectrum>
@@ -45,10 +48,12 @@ Advanced:
     <source>
       type spectrum
       endpoint spectrum.yourdomain.com 	# required, FQDN of endpoint
-      user username                     # required
-      pass password                     # required
+      username username                     # required
+      password password                     # required
       interval 60                       # optional, interval in seconds, defaults to 300
-      state_file /tmp/spectrum_state    # optional, file to keep state    
+      state_type file                   # optional, set the type for store state (file or redis)
+      state_file /tmp/spectrum_state  # optional, file to keep state or file to get redis configure (need state_type setup)
+      tag alert.spectrum   #optional, add your own tag for tha alert  
     </source>
     # using rename_key to map to new keynames
     <match alert.spectrum>
@@ -91,6 +96,71 @@ Verify:
 
 		Output:
 		2015-03-05 15:04:00 -0800 alert.spectrum: {"event_type":"alert.spectrum","intermediary_source":"spectrumapi001.corp.yourdomain.net","ALARM_ID":"54f8e0e0-e706-12c2-0165-005056a07ac5","CREATION_DATE":"1425596640","SEVERITY":"3","ALARM_TITLE":"LOGMATCH TRAPSEND CRIT","HOSTNAME":"yourhost001.corp.yourdomain.net","IP_ADDRESS":"10.10.0.14","ORIGINATING_EVENT_ATTR":"A SEC logmatch trapsend CRIT Your Alert Message here","MODEL_STRING":"Host_Device","ACKNOWLEDGED":"false","ALARM_STATUS":"","OCCURRENCES":"1","TROUBLE_SHOOTER":"","USER_CLEARABLE":"true","TROUBLE_TICKET_ID":"","PERSISTENT":"true","GC_NAME":"Your_Global_Collection"}
+
+
+### Output plugin
+
+Add the following into your fluentd config.
+
+```
+#set source,  here use kafka as example
+<source>
+  type   kafka
+  host   localhost  #<broker host>
+  port   9092 # <broker port: default=9092>
+  topics argos-parser #<listening topics(separate with comma',')>
+  format json #<input text type (text|json|ltsv|msgpack)>
+</source>
+
+# once match specific tag, use spectrum output plugin
+<match argos-parser>
+  type spectrum
+  endpoint spectrum.yourdomain.com  # required, FQDN of endpoint 
+  user username # required
+  pass password # required
+  interval 10 # interval in seconds
+  model_mh your_model_handler # required, you need to create model in spectrum first
+  event_type_id your_event_type_id # required, you need to set event type in spectrum first 
+  spectrum_key event_type # key in alert to check if alert is from spectrum
+  spectrum_value alert.raw.spectrum # value to match is its from spectrum
+  alarm_ID_key source_event_id  # key in the alert that associate with alarm_ID for calling spectrum PUT alarms api 
+  
+  # For 3rd party alerts
+  # Create new events in Spectrum
+  # Set these parameters according to varbind keys of your event type in spectrum 
+  # and the keynames in your original event (which you want to push to spectrum)
+  # start with varbind*
+  #varbinds* key_varbind orig_event_keyname 
+  #varbind1 1 event_name
+  varbind2 2 source_hostname
+  varbind3 100  creation_time 
+  varbind4 101  criticality
+  varbind5 102  source_ip 
+  varbind6 103  alert_description   
+  varbind7 104  application_name  
+  varbind8 105  business_unit_l2  
+  varbind9 106  business_unit_l3  
+  varbind10 107  business_unit_l4  
+  varbind11 108  cmdb_ci_sys_id   
+
+
+  # Update existing alarms from Spectrum
+  # set these parameters according to keys of alarm in spectrum that you want to update
+  # and the the keynames in your original event 
+  #rename_rule* key_varbind orig_event_keyname 
+  rename_rule1 0xffff00f6 application_name 
+  rename_rule2 0xffff00f7 business_unit_l2
+  rename_rule3 0xffff00f8 business_unit_l3
+  rename_rule4 0xffff00f9 business_unit_l4
+  rename_rule5 0xffff00fa cmdb_ci_sysid
+
+</match>
+```
+
+Now startup fluentd
+
+    $ sudo fluentd -c fluent.conf &
+
 
 ## To Do
 * All flag to allow specifying spectrum attributes to get or get _ALL_
