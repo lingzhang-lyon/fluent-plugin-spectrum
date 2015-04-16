@@ -26,4 +26,5 @@ Gem::Specification.new do |gem|
   gem.add_runtime_dependency "fluentd", '~> 0.12'
   gem.add_runtime_dependency "json", '~> 1.8'
   gem.add_runtime_dependency "rest-client", '~> 1.8'
+  gem.add_runtime_dependency "highwatermark", '~> 0.1'
 end
