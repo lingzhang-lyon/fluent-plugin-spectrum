@@ -127,7 +127,8 @@ module Fluent
     def start
       @stop_flag = false
       # @state_store = @state_file.nil? ? MemoryStateStore.new : StateStore.new(@state_file)
-      @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type, @tag)
+      # @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type, @tag)
+      @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type)
       @loop = Coolio::Loop.new
       @loop.attach(TimerWatcher.new(@interval, true, &method(:on_timer)))
       @thread = Thread.new(&method(:run))
@@ -150,8 +151,10 @@ module Fluent
     def on_timer
       if not @stop_flag
         pollingStart = Engine.now.to_i
-        if @highwatermark.last_records()
-          alertStartTime = @highwatermark.last_records()
+        # if @highwatermark.last_records()
+        #   alertStartTime = @highwatermark.last_records()
+        if @highwatermark.last_records(@tag)
+          alertStartTime = @highwatermark.last_records(@tag)
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
         end
@@ -236,7 +239,8 @@ module Fluent
         else
           $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
         end
-        @highwatermark.update_records(pollingEnd)
+        # @highwatermark.update_records(pollingEnd)
+        @highwatermark.update_records(pollingEnd,@tag)
       end
     end # def input
   end # class SpectrumInput
