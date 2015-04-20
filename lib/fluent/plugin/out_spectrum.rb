@@ -37,36 +37,29 @@ module Fluent
 
     # This method is called before starting.
     def configure(conf)
-      super 
-      # Read configuration for varbinds and create a hash
-      @varbind_rename_rules = []
-      conf_varbinds_rename_rules = conf.keys.select { |k| k =~ /^varbind(\d+)$/ }
-      conf_varbinds_rename_rules.sort_by { |r| r.sub('varbind', '').to_i }.each do |r|
-        key_varbind, key_source = parse_rename_rule conf[r]
-        if key_varbind.nil? || key_source.nil?
-          raise Fluent::ConfigError, "Failed to parse: #{r} #{conf[r]}"
-        end
-        if @varbind_rename_rules.map { |r| r[:key_varbind] }.include? /#{key_varbind}/
-          raise Fluent::ConfigError, "Duplicated rules for key #{key_varbind}: #{@varbind_rename_rules}"
-        end
-        @varbind_rename_rules << { key_varbind: key_varbind, key_source: key_source }
-        $log.info "Added varbind_rename_rules: #{r} #{@varbind_rename_rules.last}"
-      end
-      # Read configuration for rename_rules and create a hash
-      @rename_rules = []
-      conf_rename_rules = conf.keys.select { |k| k =~ /^rename_rule(\d+)$/ }
-      conf_rename_rules.sort_by { |r| r.sub('rename_rule', '').to_i }.each do |r|
-        key_regexp, new_key = parse_rename_rule conf[r]
-        if key_regexp.nil? || new_key.nil?
-          raise Fluent::ConfigError, "Failed to parse: #{r} #{conf[r]}"
-        end
-        if @rename_rules.map { |r| r[:key_regexp] }.include? /#{key_regexp}/
-          raise Fluent::ConfigError, "Duplicated rules for key #{key_regexp}: #{@rename_rules}"
-        end
-        #@rename_rules << { key_regexp: /#{key_regexp}/, new_key: new_key }
-        @rename_rules << { key_regexp: key_regexp, new_key: new_key }
-        $log.info "Added rename key rule: #{r} #{@rename_rules.last}"
-      end
+      super
+      # Read configuration for event_rename_rules and create a hash
+      @event_rename_rules = []
+      conf.elements.select { |element| element.name == 'event_rename_rules' }.each { |element|
+        element.each_pair { |key_varbind, origin_event_keyname|
+          element.has_key?(key_varbind) # to suppress unread configuration warning
+          @event_rename_rules << { key_varbind: key_varbind, origin_event_keyname: origin_event_keyname }
+          $log.info "Added event_rename_rules: #{@event_rename_rules.last}"
+        }
+      }
+
+
+      # Read configuration for alarm_rename_rules and create a hash
+      @alarm_rename_rules = []
+      conf.elements.select { |element| element.name == 'alarm_rename_rules' }.each { |element|
+        element.each_pair { |key_spectrum_alarm, origin_event_keyname|
+          element.has_key?(key_spectrum_alarm) # to suppress unread configuration warning
+          @alarm_rename_rules << { key_spectrum_alarm: key_spectrum_alarm, origin_event_keyname: origin_event_keyname }
+          $log.info "Added alarm_rename_rules: #{@alarm_rename_rules.last}"
+        }
+      }
+
+      
       # Setup URL Resource
       @alarms_url = 'http://' + @endpoint.to_s + '/spectrum/restful/alarms/'
       @events_url = 'http://' + @endpoint.to_s + '/spectrum/restful/events'
@@ -107,9 +100,9 @@ module Fluent
             # Create an empty hash
             alertUpdateHash=Hash.new
             # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            @rename_rules.each { |rule| 
-              pp rule[:new_key]
-              alertUpdateHash[rule[:key_regexp]]=record["event"][rule[:new_key]]
+            @alarm_rename_rules.each { |rule| 
+              pp rule[:origin_event_keyname]
+              alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
             }
             # construct the alarms PUT uri for update triggerd alarm withe enriched fields
             @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
@@ -144,9 +137,9 @@ module Fluent
             # Create an empty hash
             alertNewHash=Hash.new
             # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            @varbind_rename_rules.each { |varbind| 
-              pp varbind[:key_varbind]+varbind[:key_source]
-              alertNewHash[varbind[:key_varbind]]=record["event"][varbind[:key_source]]
+            @event_rename_rules.each { |rule| 
+              pp rule[:key_varbind]+rule[:origin_event_keyname]
+              alertNewHash[rule[:key_varbind]]=record["event"][rule[:origin_event_keyname]]
             }
             # construct the xml
             @post_event_xml ="<?xml version=\"1.0\" encoding=\"UTF-8\"?>

@@ -129,30 +129,32 @@ Add the following into your fluentd config.
   # Create new events in Spectrum
   # Set these parameters according to varbind keys of your event type in spectrum 
   # and the keynames in your original event (which you want to push to spectrum)
-  # start with varbind*
-  #varbinds* key_varbind orig_event_keyname 
-  #varbind1 1 event_name
-  varbind2 2 source_hostname
-  varbind3 100  creation_time 
-  varbind4 101  criticality
-  varbind5 102  source_ip 
-  varbind6 103  alert_description   
-  varbind7 104  application_name  
-  varbind8 105  business_unit_l2  
-  varbind9 106  business_unit_l3  
-  varbind10 107  business_unit_l4  
-  varbind11 108  cmdb_ci_sys_id   
+  <event_rename_rules>
+    #key_varbind origin_event_keyname 
+    2 source_hostname
+    100  creation_time 
+    101  criticality
+    102  source_ip 
+    103  alert_description   
+    104  application_name  
+    105  business_unit_l2  
+    106  business_unit_l3  
+    107  business_unit_l4  
+    108  cmdb_ci_sys_id
+  </event_rename_rules>  
 
 
   # Update existing alarms from Spectrum
   # set these parameters according to keys of alarm in spectrum that you want to update
   # and the the keynames in your original event 
-  #rename_rule* key_varbind orig_event_keyname 
-  rename_rule1 0xffff00f6 application_name 
-  rename_rule2 0xffff00f7 business_unit_l2
-  rename_rule3 0xffff00f8 business_unit_l3
-  rename_rule4 0xffff00f9 business_unit_l4
-  rename_rule5 0xffff00fa cmdb_ci_sysid
+  <alarm_rename_rules>
+    #key_spectrum_alarm origin_event_keyname 
+    0xffff00f6 application_name 
+    0xffff00f7 business_unit_l2
+    0xffff00f8 business_unit_l3
+    0xffff00f9 business_unit_l4
+    0xffff00fa cmdb_ci_sysid
+  </alarm_rename_rules>
 
 </match>
 ```
