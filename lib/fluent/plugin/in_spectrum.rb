@@ -155,8 +155,10 @@ module Fluent
         #   alertStartTime = @highwatermark.last_records()
         if @highwatermark.last_records(@tag)
           alertStartTime = @highwatermark.last_records(@tag)
+          $log.info "got hwm form state file: #{alertStartTime.to_i}"
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
+          $log.info "no hwm, got new alert start time: #{alertStartTime.to_i}"
         end
         pollingEnd = ''
         pollingDuration = ''
