@@ -10,6 +10,7 @@ module Fluent
     config_param  :password,      :string,  :default => nil
     config_param  :state_type,    :string,  :default => nil
     config_param  :state_file,    :string,  :default => nil
+    config_param  :state_tag,     :string,  :default => nil
     config_param  :attributes,    :string,  :default => "ALL"
     config_param  :interval,      :integer, :default => INTERVAL_MIN
     config_param  :select_limit,  :integer, :default => 10000
@@ -126,8 +127,6 @@ module Fluent
 
     def start
       @stop_flag = false
-      # @state_store = @state_file.nil? ? MemoryStateStore.new : StateStore.new(@state_file)
-      # @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type, @tag)
       @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type)
       @loop = Coolio::Loop.new
       @loop.attach(TimerWatcher.new(@interval, true, &method(:on_timer)))
@@ -151,10 +150,8 @@ module Fluent
     def on_timer
       if not @stop_flag
         pollingStart = Engine.now.to_i
-        # if @highwatermark.last_records()
-        #   alertStartTime = @highwatermark.last_records()
-        if @highwatermark.last_records(@tag)
-          alertStartTime = @highwatermark.last_records(@tag)
+        if @highwatermark.last_records(@state_tag)
+          alertStartTime = @highwatermark.last_records(@state_tag)
           $log.info "got hwm form state file: #{alertStartTime.to_i}"
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
@@ -241,8 +238,7 @@ module Fluent
         else
           $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
         end
-        # @highwatermark.update_records(pollingEnd)
-        @highwatermark.update_records(pollingEnd,@tag)
+        @highwatermark.update_records(pollingEnd,@state_tag)
       end
     end # def input
   end # class SpectrumInput

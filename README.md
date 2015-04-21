@@ -53,7 +53,8 @@ Advanced:
       interval 60                       # optional, interval in seconds, defaults to 300
       state_type file                   # optional, set the type for store state (file or redis)
       state_file /tmp/spectrum_state  # optional, file to keep state or file to get redis configure (need state_type setup)
-      tag alert.spectrum   #optional, add your own tag for tha alert  
+      state_tag  spectrum             # optional, tag for store state(need state_type, state_file setup)
+      tag alert.spectrum              # optional, add your own tag for tha alert  
     </source>
     # using rename_key to map to new keynames
     <match alert.spectrum>
