@@ -54,8 +54,11 @@ Advanced:
       state_type file                   # optional, set the type for store state (file or redis)
       state_file /tmp/spectrum_state  # optional, file to keep state or file to get redis configure (need state_type setup)
       state_tag  spectrum             # optional, tag for store state(need state_type, state_file setup)
-      tag alert.spectrum              # optional, add your own tag for tha alert  
+      tag alert.spectrum              # optional, add your own tag for tha alert
+      attributes  ALARM_ID,CREATION_DATE,HOSTNAME   # optional, select attributes that you want to poll in alerts, default value is __ALL__
     </source>
+
+    
     # using rename_key to map to new keynames
     <match alert.spectrum>
       type rename_key

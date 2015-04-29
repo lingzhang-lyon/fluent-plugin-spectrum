@@ -8,13 +8,14 @@ module Fluent
     config_param  :endpoint,      :string,  :default => nil
     config_param  :username,      :string,  :default => nil
     config_param  :password,      :string,  :default => nil
-    config_param  :state_type,    :string,  :default => nil
+    config_param  :state_type,    :string,  :default => "memory"
     config_param  :state_file,    :string,  :default => nil
-    config_param  :state_tag,     :string,  :default => nil
-    config_param  :attributes,    :string,  :default => "ALL"
+    config_param  :state_tag,     :string,  :default => "spectrum"
+    config_param  :attributes,    :string,  :default => "__ALL__"
     config_param  :interval,      :integer, :default => INTERVAL_MIN
     config_param  :select_limit,  :integer, :default => 10000
     config_param  :include_raw,   :bool,    :default => "false"
+    
 
     # Classes
     class TimerWatcher < Coolio::TimerWatcher
@@ -49,6 +50,7 @@ module Fluent
       require 'rest-client'
       require 'json'
       require 'highwatermark'
+      require 'yaml'
       super
     end # def initialize
 
@@ -69,7 +71,8 @@ module Fluent
         $log.warn "Spectrum :: 'state_file PATH' parameter is not set to a valid source."
         $log.warn "Spectrum :: this parameter is highly recommended to save the last known good timestamp to resume event consuming"
       end
-      # map of Spectrum attribute codes to names
+
+      # default setting for @spectrum_access_code
       @spectrum_access_code={
         "0x11f9c" => "ALARM_ID",
         "0x11f4e" => "CREATION_DATE",
@@ -87,37 +90,63 @@ module Fluent
         "0x12022" => "TROUBLE_TICKET_ID",
         "0x12942" => "PERSISTENT",
         "0x12adb" => "GC_NAME",
-        "0x57f0105" => "Custom_Project",
-        #{}"0x11f51" => "CLEARED_BY_USER_NAME",
-        #{}"0x11f52" => "EVENT_ID_LIST",
-        #{}"0x11f53" => "MODEL_HANDLE",
-        #{}"0x11f54" => "PRIMARY_ALARM",
-        #{}"0x11fc4" => "ALARM_SOURCE",
-        #{}"0x11fc6" => "TROUBLE_SHOOTER_MH",
-        #{}"0x12a6c" => "TROUBLE_SHOOTER_EMAIL",
-        #{}"0x1290d" => "IMPACT_SEVERITY",
-        #{}"0x1290e" => "IMPACT_SCOPE",
-        #{}"0x1298a" => "IMPACT_TYPE_LIST",
-        #{}"0x12948" => "DIAGNOSIS_LOG",
-        #{}"0x129aa" => "MODEL_ID",
-        #{}"0x129ab" => "MODEL_TYPE_ID",
-        #{}"0x129af" => "CLEAR_DATE",
-        #{}"0x12a04" => "SYMPTOM_LIST_ATTR",
-        #{}"0x12a6f" => "EVENT_SYMPTOM_LIST_ATTR",
-        #{}"0x12a05" => "CAUSE_LIST_ATTR",
-        #{}"0x12a06" => "SYMPTOM_COUNT_ATTR",
-        #{}"0x12a70" => "EVENT_SYMPTOM_COUNT_ATTR",
-        #{}"0x12a07" => "CAUSE_COUNT_ATTR",
-        #{}"0x12a63" => "WEB_CONTEXT_URL",
-        #{}"0x12a6b" => "COMBINED_IMPACT_TYPE_LIST",
-        #{}"0x11f50" => "CAUSE_CODE",
-        #{}"0x10009" => "SECURITY_STRING"
+        "0x57f0105" => "CUSTOM_PROJECT",
+        "0x11f51" => "CLEARED_BY_USER_NAME",
+        "0x11f52" => "EVENT_ID_LIST",
+        "0x11f53" => "MODEL_HANDLE",
+        "0x11f54" => "PRIMARY_ALARM",
+        "0x11fc4" => "ALARM_SOURCE",
+        "0x11fc6" => "TROUBLE_SHOOTER_MH",
+        "0x12a6c" => "TROUBLE_SHOOTER_EMAIL",
+        "0x1290d" => "IMPACT_SEVERITY",
+        "0x1290e" => "IMPACT_SCOPE",
+        "0x1298a" => "IMPACT_TYPE_LIST",
+        "0x12948" => "DIAGNOSIS_LOG",
+        "0x129aa" => "MODEL_ID",
+        "0x129ab" => "MODEL_TYPE_ID",
+        "0x129af" => "CLEAR_DATE",
+        "0x12a04" => "SYMPTOM_LIST_ATTR",
+        "0x12a6f" => "EVENT_SYMPTOM_LIST_ATTR",
+        "0x12a05" => "CAUSE_LIST_ATTR",
+        "0x12a06" => "SYMPTOM_COUNT_ATTR",
+        "0x12a70" => "EVENT_SYMPTOM_COUNT_ATTR",
+        "0x12a07" => "CAUSE_COUNT_ATTR",
+        "0x12a63" => "WEB_CONTEXT_URL",
+        "0x12a6b" => "COMBINED_IMPACT_TYPE_LIST",
+        "0x11f50" => "CAUSE_CODE",
+        "0x10009" => "SECURITY_STRING"
       }
+
       # Create XML chunk for attributes we care about
       @attr_of_interest=""
-      @spectrum_access_code.each do |key, array|
-        @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
-      end
+      if(@attributes.upcase === "__ALL__")
+        $log.info "all attributes"
+        @spectrum_access_code.each do |key, value|
+          $log.info "key: #{key},  value: #{value}"
+          @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
+        end
+      else
+        $log.info "selected attributes"
+        @attributes.split(",").each {|attr|         
+          key=""
+          value=""
+          # if it's hex code
+          if @spectrum_access_code.has_key?(attr.strip)
+            key = attr.strip
+            value = @spectrum_access_code.fetch(key)
+          # if it's the name
+          elsif @spectrum_access_code.has_value?(attr.strip.upcase)
+            value = attr.strip.upcase
+            key = @spectrum_access_code.key(value)
+          # if it's invalid input, not the hex code or name in the map
+          else 
+            raise ConfigError, "Spectrum :: ConfigError attribute '#{attr}' is not in the hash map"
+          end
+          $log.info "key: #{key},  value: #{value}"
+          @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
+        }
+      end      
+
       # URL Resource
       def resource
         @url = 'http://' + @endpoint.to_s + '/spectrum/restful/alarms'
