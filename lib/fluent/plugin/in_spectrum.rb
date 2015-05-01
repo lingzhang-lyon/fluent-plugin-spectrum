@@ -8,9 +8,13 @@ module Fluent
     config_param  :endpoint,      :string,  :default => nil
     config_param  :username,      :string,  :default => nil
     config_param  :password,      :string,  :default => nil
+    
+    config_param  :state_tag,     :string,  :default => "spectrum"
     config_param  :state_type,    :string,  :default => "memory"
     config_param  :state_file,    :string,  :default => nil
-    config_param  :state_tag,     :string,  :default => "spectrum"
+    config_param  :redis_host,    :string,  :default => nil
+    config_param  :redis_port,    :string,  :default => nil
+
     config_param  :attributes,    :string,  :default => "__ALL__"
     config_param  :interval,      :integer, :default => INTERVAL_MIN
     config_param  :select_limit,  :integer, :default => 10000
@@ -67,10 +71,19 @@ module Fluent
         raise ConfigError, "Spectrum :: ConfigError 'interval' must be #{INTERVAL_MIN} or over."
       end
       # Warn about optional state file
-      unless @state_file
-        $log.warn "Spectrum :: 'state_file PATH' parameter is not set to a valid source."
-        $log.warn "Spectrum :: this parameter is highly recommended to save the last known good timestamp to resume event consuming"
+      unless @state_type == "file" || @state_type =="redis"
+        $log.warn "Spectrum :: 'state_type' is not set to file or redis"
+        $log.warn "Spectrum :: state file or redis are recommended to save the last known good timestamp to resume event consuming"
       end
+
+      @highwatermark_parameters={
+        "state_tag" => @state_tag,     
+        "state_type" => @state_type,
+        "state_file" => @state_file,
+        "redis_host" => @redis_host,
+        "redis_port" => @redis_port      
+      }
+      $log.info "highwatermark_parameters: #{@highwatermark_parameters}"
 
       # default setting for @spectrum_access_code
       @spectrum_access_code={
@@ -156,7 +169,7 @@ module Fluent
 
     def start
       @stop_flag = false
-      @highwatermark = Highwatermark::HighWaterMark.new(@state_file, @state_type)
+      @highwatermark = Highwatermark::HighWaterMark.new(@highwatermark_parameters)
       @loop = Coolio::Loop.new
       @loop.attach(TimerWatcher.new(@interval, true, &method(:on_timer)))
       @thread = Thread.new(&method(:run))
