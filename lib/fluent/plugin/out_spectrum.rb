@@ -13,11 +13,11 @@ module Fluent
     config_param :spectrum_key, :string, :default => "event_type" # key in the alert to check if alert is from spectrum
     config_param :spectrum_value, :string, :default => "alert.raw.spectrum"# value to match is its from spectrum
     config_param :alarm_ID_key, :string, :default => "source_event_id" # key in the alert that associate with alarm_ID for calling spectrum PUT alarms api 
+    config_param :debug, :bool, :default => false
 
     def initialize
       require 'rest-client'
       require 'json'
-      require 'pp'  # just for debug, could be removed
       require 'cgi' # verify we need --yes, we need it, to_utf8 could not used to create valid url and xml
       super
     end # def initialize
@@ -91,7 +91,7 @@ module Fluent
     def emit(tag, es, chain)
       chain.next
       es.each {|time,record|
-        $stderr.puts "OK!"
+        
         if (record["event"].has_key?(@alarm_ID_key) && record["event"].has_key?(@spectrum_key) ) 
           ######native spectrum alert ########################
           ######PUT alarm to update enriched fields
@@ -101,7 +101,7 @@ module Fluent
             alertUpdateHash=Hash.new
             # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
             @alarm_rename_rules.each { |rule| 
-              pp rule[:origin_event_keyname]
+              puts rule[:origin_event_keyname]
               alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
             }
             # construct the alarms PUT uri for update triggerd alarm withe enriched fields
@@ -138,7 +138,9 @@ module Fluent
             alertNewHash=Hash.new
             # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
             @event_rename_rules.each { |rule| 
-              pp rule[:key_varbind]+rule[:origin_event_keyname]
+              if(debug)
+                $log.info rule[:key_varbind]+": "+ rule[:origin_event_keyname]
+              end
               alertNewHash[rule[:key_varbind]]=record["event"][rule[:origin_event_keyname]]
             }
             # construct the xml
@@ -167,21 +169,23 @@ module Fluent
                     </rs:event>
                   </rs:event-request>"
             @triggered_event_id = ''
-            $log.info "Rest url for post events: " + @events_url               
-            $log.info "xml: " +@post_event_xml    
+            if(debug)
+              $log.info "Rest url for post events: " + @events_url               
+              $log.info "xml: " +@post_event_xml 
+            end   
             begin        
               # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
               eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
               $log.info eventPostRes
               eventPostResBody = JSON.parse(eventPostRes.body)
               @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
-              $log.info "event id is: " + @triggered_event_id
+              # $log.info "event id is: " + @triggered_event_id
             end
 
           end #end of checking alerts is from 3rd party or spectrum
           
         else # if don't have @alarm_ID_key and @spectrum_key
-          $log.info "The alert don't have 'alarm_ID_key' and 'spectrum_key' "
+          $log.info "The alert don't have '#{@alarm_ID_key}' and '#{@spectrum_key}' "
           $log.info record["event"]
         end 
 
