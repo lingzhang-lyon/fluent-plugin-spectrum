@@ -94,41 +94,49 @@ module Fluent
         
         if (record["event"].has_key?(@alarm_ID_key) && record["event"].has_key?(@spectrum_key) ) 
           ######native spectrum alert ########################
-          ######PUT alarm to update enriched fields
           if (record["event"][@spectrum_key] == @spectrum_value) 
             $log.info "The alert is from spectrum"
-            # Create an empty hash
-            alertUpdateHash=Hash.new
-            # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-            @alarm_rename_rules.each { |rule| 
-              puts rule[:origin_event_keyname]
-              alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
-            }
-            # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-            @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
-            @attr_count = 0
-            alertUpdateHash.each do |attr, val| 
-              if (val.nil? || val.empty?)
-                next
-              else
-                if (@attr_count == 0)
-                  @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                  # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
-                  @attr_count +=1
+
+            if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )            
+            ## the alert is new, need to update
+            ## PUT alarm to update enriched fields            
+              # Create an empty hash
+              alertUpdateHash=Hash.new
+              # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+              @alarm_rename_rules.each { |rule| 
+                puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
+                alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
+              }
+              # construct the alarms PUT uri for update triggerd alarm withe enriched fields
+              @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
+              @attr_count = 0
+              alertUpdateHash.each do |attr, val| 
+                if (val.nil? || val.empty?)
+                  next
                 else
-                  @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                  # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
-                  @attr_count +=1
+                  if (@attr_count == 0)
+                    @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                    # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
+                    @attr_count +=1
+                  else
+                    @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                    # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
+                    @attr_count +=1
+                  end
                 end
               end
-            end
-            $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
-            
-            begin 
-              # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
-              alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-              $log.info alarmPutRes 
-            end
+              $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+              
+              begin 
+                # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
+                alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                $log.info alarmPutRes 
+              end
+
+            else 
+            # the alert is aleady processced by argos, 
+              $log.info "The alert is already processed by Argos, no need to update enriched fields again"
+
 
           ######3rd party alert #######################
           ######Post an event and then trigger an alarm ######   

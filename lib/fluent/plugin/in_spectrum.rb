@@ -127,8 +127,14 @@ module Fluent
         "0x12a63" => "WEB_CONTEXT_URL",
         "0x12a6b" => "COMBINED_IMPACT_TYPE_LIST",
         "0x11f50" => "CAUSE_CODE",
-        "0x10009" => "SECURITY_STRING"
+        "0x10009" => "SECURITY_STRING",
+        "0xffff00f6" => "CUSTOM_APPLICATION_NAME",
+        "0xffff00f7" => "CUSTOM_BUSINESS_UNIT_I2",
+        "0xffff00f8" => "CUSTOM_BUSINESS_UNIT_I3",
+        "0xffff00f9" => "CUSTOM_BUSINESS_UNIT_I4",
+        "0xffff00fa" => "CUSTOM_CMDB_CI_SYSTEM"
       }
+
 
       # Create XML chunk for attributes we care about
       @attr_of_interest=""
@@ -158,7 +164,7 @@ module Fluent
           $log.info "key: #{key},  value: #{value}"
           @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
         }
-      end      
+      end
 
       # URL Resource
       def resource
@@ -252,6 +258,17 @@ module Fluent
             if @include_raw.to_s == "true"  
               record_hash[:raw] = raw_array
             end
+
+            # argos specific code:
+            # if bu_l4 is not null, means it's already processed by argos
+            bu_l4 = record_hash['CUSTOM_BUSINESS_UNIT_I4']
+            if (bu_l4.nil? || bu_l4.empty?) # the alert is new, not processed by argos yet
+              record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.raw.spectrum'
+            else
+              record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.processed.spectrum'
+            end
+            # end of argos specific code
+
             Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
           end
         # Processing for single alarm returned  
@@ -275,6 +292,17 @@ module Fluent
           if @include_raw.to_s == "true"  
             record_hash[:raw] = raw_array
           end
+
+          # argos specific code:
+          # if bu_l4 is not null, means it's already processed by argos
+          bu_l4 = record_hash['CUSTOM_BUSINESS_UNIT_I4']
+          if (bu_l4.nil? || bu_l4.empty?) # the alert is new, not processed by argos yet
+            record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.raw.spectrum'
+          else
+            record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.processed.spectrum'
+          end
+          # end of argos specific code
+
           Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
         # No alarms returned
         else
