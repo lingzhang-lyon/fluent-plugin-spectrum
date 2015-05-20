@@ -90,52 +90,65 @@ module Fluent
     # NOTE! This method is called by Fluentd's main thread so you should not write slow routine here. It causes Fluentd's performance degression.
     def emit(tag, es, chain)
       chain.next
-      es.each {|time,record|
-        
-        if (record["event"].has_key?(@alarm_ID_key) && record["event"].has_key?(@spectrum_key) ) 
+      es.each {|time,record|        
           ######native spectrum alert ########################
-          if (record["event"][@spectrum_key] == @spectrum_value) 
-            $log.info "The alert is from spectrum"
+          if (record["event"].has_key?(@spectrum_key) && record["event"][@spectrum_key] == @spectrum_value) 
+            $log.info "The alert is from spectrum" 
 
-            if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )            
-            ## the alert is new, need to update
-            ## PUT alarm to update enriched fields            
-              # Create an empty hash
-              alertUpdateHash=Hash.new
-              # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
-              @alarm_rename_rules.each { |rule| 
-                puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
-                alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
-              }
-              # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-              @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
-              @attr_count = 0
-              alertUpdateHash.each do |attr, val| 
-                if (val.nil? || val.empty?)
-                  next
-                else
-                  if (@attr_count == 0)
-                    @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                    # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
-                    @attr_count +=1
+            ## the alert is new, need to update                        
+            if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )                                 
+              $log.info "The alert is new, need to be updated"
+
+              # has @alarm_ID_key in the alerts, so it can be updated
+              # PUT alarm to update enriched fields 
+              if record["event"].has_key?(@alarm_ID_key) #like 'source_event_id'
+                # Create an empty hash
+                alertUpdateHash=Hash.new
+                # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
+                @alarm_rename_rules.each { |rule| 
+                  puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
+                  alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
+                }
+                # construct the alarms PUT uri for update triggerd alarm withe enriched fields
+                # @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
+                @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]  # argos specific code
+                @attr_count = 0
+                alertUpdateHash.each do |attr, val| 
+                  if (val.nil? || val.empty?)
+                    next
                   else
-                    @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                    # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
-                    @attr_count +=1
+                    if (@attr_count == 0)
+                      @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                      # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
+                      @attr_count +=1
+                    else
+                      @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
+                      # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
+                      @attr_count +=1
+                    end
                   end
                 end
-              end
-              $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
-              
-              begin 
-                # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
-                alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-                $log.info alarmPutRes 
+                $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+                
+                begin 
+                  # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
+                  alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                  $log.info alarmPutRes 
+                end
+
+              else # don't have @alarm_ID_key,  could not be updated
+                $log.error "The alert missing #{@alarm_ID_key},  could not be updated"
+
               end
 
-            else 
-            # the alert is aleady processced by argos, 
+            # the alert is aleady processced by argos
+            elsif (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.processed.spectrum" )            
               $log.info "The alert is already processed by Argos, no need to update enriched fields again"
+
+            else
+              $log.info "The alert missing business_unit_l4, could not determine it's processed or not, also ignore"
+
+            end
 
 
           ######3rd party alert #######################
@@ -191,11 +204,6 @@ module Fluent
             end
 
           end #end of checking alerts is from 3rd party or spectrum
-          
-        else # if don't have @alarm_ID_key and @spectrum_key
-          $log.info "The alert don't have '#{@alarm_ID_key}' and '#{@spectrum_key}' "
-          $log.info record["event"]
-        end 
 
       } # end of loop for each record
     end  #end of emit
