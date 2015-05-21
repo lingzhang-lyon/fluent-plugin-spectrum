@@ -93,11 +93,11 @@ module Fluent
       es.each {|time,record|        
           ######native spectrum alert ########################
           if (record["event"].has_key?(@spectrum_key) && record["event"][@spectrum_key] == @spectrum_value) 
-            $log.info "The alert is from spectrum" 
+            $log.info "Spectrum Output :: The alert is from spectrum" 
 
             ## the alert is new, need to update                        
             if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )                                 
-              $log.info "The alert is new, need to be updated"
+              $log.info "Spectrum Output :: The alert is new, need to be updated"
 
               # has @alarm_ID_key in the alerts, so it can be updated
               # PUT alarm to update enriched fields 
@@ -128,7 +128,7 @@ module Fluent
                     end
                   end
                 end
-                $log.info "Rest url for PUT alarms: " + @alarms_urlrest            
+                $log.info "Spectrum Output :: Rest url for PUT alarms: " + @alarms_urlrest            
                 
                 begin 
                   # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
@@ -137,16 +137,16 @@ module Fluent
                 end
 
               else # don't have @alarm_ID_key,  could not be updated
-                $log.error "The alert missing #{@alarm_ID_key},  could not be updated"
+                $log.error "Spectrum Output :: The alert missing #{@alarm_ID_key},  could not be updated"
 
               end
 
             # the alert is aleady processced by argos
             elsif (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.processed.spectrum" )            
-              $log.info "The alert is already processed by Argos, no need to update enriched fields again"
+              $log.info "Spectrum Output :: The alert is already processed by Argos, no need to update enriched fields again"
 
             else
-              $log.info "The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
+              $log.info "Spectrum Output :: The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
 
             end
 
@@ -154,7 +154,7 @@ module Fluent
           ######3rd party alert #######################
           ######Post an event and then trigger an alarm ######   
           else
-            $log.info "The alert is from 3rd party"           
+            $log.info "Spectrum Output :: The alert is from 3rd party"           
             # Create an empty hash
             alertNewHash=Hash.new
             # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash

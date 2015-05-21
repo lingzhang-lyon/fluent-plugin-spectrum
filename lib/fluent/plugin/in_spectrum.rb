@@ -139,13 +139,13 @@ module Fluent
       # Create XML chunk for attributes we care about
       @attr_of_interest=""
       if(@attributes.upcase === "__ALL__")
-        $log.info "all attributes"
+        $log.info "Spectrum :: all attributes"
         @spectrum_access_code.each do |key, value|
           $log.info "key: #{key},  value: #{value}"
           @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
         end
       else
-        $log.info "selected attributes"
+        $log.info "Spectrum :: selected attributes"
         @attributes.split(",").each {|attr|         
           key=""
           value=""
@@ -200,10 +200,10 @@ module Fluent
         pollingStart = Engine.now.to_i
         if @highwatermark.last_records(@state_tag)
           alertStartTime = @highwatermark.last_records(@state_tag)
-          $log.info "got hwm form state file: #{alertStartTime.to_i}"
+          $log.info "Spectrum :: got hwm form state file: #{alertStartTime.to_i}"
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
-          $log.info "no hwm, got new alert start time: #{alertStartTime.to_i}"
+          $log.info "Spectrum :: no hwm, got new alert start time: #{alertStartTime.to_i}"
         end
         pollingEnd = ''
         pollingDuration = ''
