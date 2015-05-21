@@ -99,9 +99,9 @@ module Fluent
             if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )                                 
               $log.info "Spectrum Output :: The alert is new, need to be updated"
 
-              # has @alarm_ID_key in the alerts, so it can be updated
+              # has @alarm_ID_key(like 'source_event_id') in the alerts, so it can be updated
               # PUT alarm to update enriched fields 
-              if record["event"].has_key?(@alarm_ID_key) #like 'source_event_id'
+              if record["event"].has_key?(@alarm_ID_key) && !(record["event"][@alarm_ID_key].nil? || record["event"][@alarm_ID_key].empty?) 
                 # Create an empty hash
                 alertUpdateHash=Hash.new
                 # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
