@@ -110,8 +110,8 @@ module Fluent
                   alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
                 }
                 # construct the alarms PUT uri for update triggerd alarm withe enriched fields
-                # @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
-                @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]  # argos specific code
+                @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
+                # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]  # argos specific code
                 @attr_count = 0
                 alertUpdateHash.each do |attr, val| 
                   if (val.nil? || val.empty?)
@@ -146,7 +146,7 @@ module Fluent
               $log.info "The alert is already processed by Argos, no need to update enriched fields again"
 
             else
-              $log.info "The alert missing business_unit_l4, could not determine it's processed or not, also ignore"
+              $log.info "The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
 
             end
 
