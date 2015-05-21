@@ -19,6 +19,12 @@ module Fluent
     config_param  :interval,      :integer, :default => INTERVAL_MIN
     config_param  :select_limit,  :integer, :default => 10000
     config_param  :include_raw,   :bool,    :default => "false"
+
+    # to differentiate alerts is new or processed
+    config_param :new_or_processed_key, :string, :default => "CUSTOM_BUSINESS_UNIT_I4" # key in the alert to check if alert is new
+    config_param :new_alert_value, :string, :default => "alert.raw.spectrum"
+    config_param :processed_alert_value, :string, :default => "alert.processed.spectrum"
+
     
 
     # Classes
@@ -127,13 +133,25 @@ module Fluent
         "0x12a63" => "WEB_CONTEXT_URL",
         "0x12a6b" => "COMBINED_IMPACT_TYPE_LIST",
         "0x11f50" => "CAUSE_CODE",
-        "0x10009" => "SECURITY_STRING",
-        "0xffff00f1" => "CUSTOM_APPLICATION_NAME",
-        "0xffff00f2" => "CUSTOM_BUSINESS_UNIT_I2",
-        "0xffff00f3" => "CUSTOM_BUSINESS_UNIT_I3",
-        "0xffff00f4" => "CUSTOM_BUSINESS_UNIT_I4",
-        "0xffff00f5" => "CUSTOM_CMDB_CI_SYSTEM"
+        "0x10009" => "SECURITY_STRING"
+        # "0xffff00f1" => "CUSTOM_APPLICATION_NAME",
+        # "0xffff00f2" => "CUSTOM_BUSINESS_UNIT_I2",
+        # "0xffff00f3" => "CUSTOM_BUSINESS_UNIT_I3",
+        # "0xffff00f4" => "CUSTOM_BUSINESS_UNIT_I4",
+        # "0xffff00f5" => "CUSTOM_CMDB_CI_SYSTEM"
       }
+
+      # Read configuration for custom_attributes, and add to @spectrum_access_code
+      @custom_attributes = []
+      conf.elements.select { |element| element.name == 'custom_attributes' }.each { |element|
+        element.each_pair { |custom_attribute_code, custom_attribute_name|
+          element.has_key?(custom_attribute_code) # to suppress unread configuration warning
+          @custom_attributes << { custom_attribute_code: custom_attribute_code, custom_attribute_name: custom_attribute_name }
+          @spectrum_access_code.store(custom_attribute_code,custom_attribute_name)
+          $log.info "Added custom_attributes: #{@custom_attributes.last}"
+        }
+      }
+
 
 
       # Create XML chunk for attributes we care about
@@ -164,6 +182,19 @@ module Fluent
           $log.info "key: #{key},  value: #{value}"
           @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
         }
+
+        if !(@custom_attributes.nil? || @custom_attributes.empty?)
+          $log.info "Spectrum :: custom attributes"
+          @custom_attributes.each{ |row|
+            # TO DO
+            key = row[:custom_attribute_code]
+            value = row[:custom_attribute_name]
+            $log.info "key: #{key},  value: #{value}"
+            @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
+
+          }
+        end
+
       end
 
       # URL Resource
@@ -259,15 +290,15 @@ module Fluent
               record_hash[:raw] = raw_array
             end
 
-            # argos specific code:
-            # if bu_l4 is not null, means it's already processed by argos
-            bu_l4 = record_hash['CUSTOM_BUSINESS_UNIT_I4']
-            if (bu_l4.nil? || bu_l4.empty?) # the alert is new, not processed by argos yet
-              record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.raw.spectrum'
+
+            ####### argos specific code: 
+            # if @new_or_processed_key is not null, means it's already processed by argos
+            if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+              record_hash[@new_or_processed_key] = @new_alert_value
             else
-              record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.processed.spectrum'
+              record_hash[@new_or_processed_key] = @processed_alert_value
             end
-            # end of argos specific code
+            ####### end of argos specific code
 
             Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
           end
@@ -293,15 +324,14 @@ module Fluent
             record_hash[:raw] = raw_array
           end
 
-          # argos specific code:
-          # if bu_l4 is not null, means it's already processed by argos
-          bu_l4 = record_hash['CUSTOM_BUSINESS_UNIT_I4']
-          if (bu_l4.nil? || bu_l4.empty?) # the alert is new, not processed by argos yet
-            record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.raw.spectrum'
+          ########## argos specific code:
+          # if @new_or_processed_key is not null, means it's already processed by argos
+          if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+            record_hash[@new_or_processed_key] = @new_alert_value
           else
-            record_hash['CUSTOM_BUSINESS_UNIT_I4'] = 'alert.processed.spectrum'
+            record_hash[@new_or_processed_key] = @processed_alert_value
           end
-          # end of argos specific code
+          ######## end of argos specific code
 
           Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
         # No alarms returned

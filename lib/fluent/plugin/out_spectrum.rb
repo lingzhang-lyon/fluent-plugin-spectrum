@@ -10,9 +10,19 @@ module Fluent
     config_param :interval, :integer, :default => '300' #Default 5 minutes
     config_param :model_mh, :string, :default => "model_mh"
     config_param :event_type_id, :string, :default => "event_type_id"
+
+    # to differentiate alert is from spectrum or 3rd party
     config_param :spectrum_key, :string, :default => "event_type" # key in the alert to check if alert is from spectrum
     config_param :spectrum_value, :string, :default => "alert.raw.spectrum"# value to match is its from spectrum
+
+    # for updating alert in spectrum
     config_param :alarm_ID_key, :string, :default => "source_event_id" # key in the alert that associate with alarm_ID for calling spectrum PUT alarms api 
+
+    # to differentiate alerts is new or processed
+    config_param :new_or_processed_key, :string, :default => "business_unit_l4" # key in the alert to check if alert is new
+    config_param :new_alert_value, :string, :default => "alert.raw.spectrum"
+    config_param :processed_alert_value, :string, :default => "alert.processed.spectrum"
+
     config_param :debug, :bool, :default => false
 
     def initialize
@@ -96,7 +106,7 @@ module Fluent
             $log.info "Spectrum Output :: The alert is from spectrum" 
 
             ## the alert is new, need to update                        
-            if (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.raw.spectrum" )                                 
+            if (record["event"].has_key?(@new_or_processed_key) && record["event"][@new_or_processed_key] == @new_alert_value )                                 
               $log.info "Spectrum Output :: The alert is new, need to be updated"
 
               # has @alarm_ID_key(like 'source_event_id') in the alerts, so it can be updated
@@ -142,8 +152,8 @@ module Fluent
               end
 
             # the alert is aleady processced by argos
-            elsif (record["event"].has_key?("business_unit_l4") && record["event"]["business_unit_l4"]=="alert.processed.spectrum" )            
-              $log.info "Spectrum Output :: The alert is already processed by Argos, no need to update enriched fields again"
+            elsif (record["event"].has_key?(@new_or_processed_key) && record["event"][@new_or_processed_key] == @processed_alert_value )            
+              $log.info "Spectrum Output :: The alert is already processed, no need to update enriched fields again"
 
             else
               $log.info "Spectrum Output :: The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
