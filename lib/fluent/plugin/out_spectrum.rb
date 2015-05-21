@@ -133,7 +133,7 @@ module Fluent
                 begin 
                   # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
                   alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-                  $log.info alarmPutRes 
+                  $log.info "Spectrum Output :: "+ alarmPutRes 
                 end
 
               else # don't have @alarm_ID_key,  could not be updated
@@ -191,13 +191,13 @@ module Fluent
                   </rs:event-request>"
             @triggered_event_id = ''
             if(debug)
-              $log.info "Rest url for post events: " + @events_url               
-              $log.info "xml: " +@post_event_xml 
+              $log.info "Spectrum Output :: Rest url for post events: " + @events_url               
+              $log.info "Spectrum Output :: xml: " +@post_event_xml 
             end   
             begin        
               # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
               eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
-              $log.info eventPostRes
+              $log.info "Spectrum Output :: " + eventPostRes
               eventPostResBody = JSON.parse(eventPostRes.body)
               @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
               # $log.info "event id is: " + @triggered_event_id

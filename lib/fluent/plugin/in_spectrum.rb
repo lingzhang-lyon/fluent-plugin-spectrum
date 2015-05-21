@@ -128,11 +128,11 @@ module Fluent
         "0x12a6b" => "COMBINED_IMPACT_TYPE_LIST",
         "0x11f50" => "CAUSE_CODE",
         "0x10009" => "SECURITY_STRING",
-        "0xffff00f6" => "CUSTOM_APPLICATION_NAME",
-        "0xffff00f7" => "CUSTOM_BUSINESS_UNIT_I2",
-        "0xffff00f8" => "CUSTOM_BUSINESS_UNIT_I3",
-        "0xffff00f9" => "CUSTOM_BUSINESS_UNIT_I4",
-        "0xffff00fa" => "CUSTOM_CMDB_CI_SYSTEM"
+        "0xffff00f1" => "CUSTOM_APPLICATION_NAME",
+        "0xffff00f2" => "CUSTOM_BUSINESS_UNIT_I2",
+        "0xffff00f3" => "CUSTOM_BUSINESS_UNIT_I3",
+        "0xffff00f4" => "CUSTOM_BUSINESS_UNIT_I4",
+        "0xffff00f5" => "CUSTOM_CMDB_CI_SYSTEM"
       }
 
 
