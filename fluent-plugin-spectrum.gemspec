@@ -3,8 +3,8 @@ $:.push File.expand_path("../lib", __FILE__)
 
 Gem::Specification.new do |gem|
   gem.name          = "fluent-plugin-spectrum"
-  gem.version       = "0.0.9.2" 
-  gem.date          = '2015-05-21'
+  gem.version       = "0.0.9.3" 
+  gem.date          = '2015-06-10'
   gem.authors       = ["Alex Pena","Ling Zhang"]
   gem.email         = ["pena.alex@gmail.com", "zhangling.ice@gmail.com"]
   gem.summary       = %q{Fluentd plugin for managing monitoring alerts from CA Spectrum}

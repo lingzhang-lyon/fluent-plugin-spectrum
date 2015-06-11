@@ -247,11 +247,11 @@ module Fluent
         <rs:attribute-filter>
           <search-criteria xmlns=\"http://www.ca.com/spectrum/restful/schema/filter\">
           <filtered-models>
-            <greater-than>
+            <greater-than-or-equals>
               <attribute id=\"0x11f4e\">
                 <value> #{alertStartTime} </value>
               </attribute>
-            </greater-than>
+            </greater-than-or-equals>
           </filtered-models>
           </search-criteria>
         </rs:attribute-filter>
@@ -268,7 +268,7 @@ module Fluent
 
         # Processing for multiple alerts returned
         if body['ns1.alarm-response-list']['@total-alarms'].to_i > 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
+          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
           # iterate through each alarm
           body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm'].each do |alarm|
             # Create initial structure
@@ -290,6 +290,10 @@ module Fluent
               record_hash[:raw] = raw_array
             end
 
+            # log the alarm id for each alert
+            if record_hash['ALARM_ID'] 
+              $log.info "Spectrum :: alarm_id \"#{record_hash['ALARM_ID']}\""
+            end 
 
             ####### argos specific code: 
             # if @new_or_processed_key is not null, means it's already processed by argos
@@ -304,7 +308,7 @@ module Fluent
           end
         # Processing for single alarm returned  
         elsif body['ns1.alarm-response-list']['@total-alarms'].to_i == 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
+          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
           # Create initial structure
           record_hash = Hash.new # temp hash to hold attributes of alarm
           raw_array = Array.new # temp hash to hold attributes of alarm for raw
@@ -323,6 +327,11 @@ module Fluent
           if @include_raw.to_s == "true"  
             record_hash[:raw] = raw_array
           end
+
+          # log the alarm id for each alert
+          if record_hash['ALARM_ID'] 
+            $log.info "Spectrum :: alarm_id \"#{record_hash['ALARM_ID']}\""
+          end 
 
           ########## argos specific code:
           # if @new_or_processed_key is not null, means it's already processed by argos

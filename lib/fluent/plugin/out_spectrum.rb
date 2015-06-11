@@ -112,11 +112,12 @@ module Fluent
               # has @alarm_ID_key(like 'source_event_id') in the alerts, so it can be updated
               # PUT alarm to update enriched fields 
               if record["event"].has_key?(@alarm_ID_key) && !(record["event"][@alarm_ID_key].nil? || record["event"][@alarm_ID_key].empty?) 
+                $log.info "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\""
                 # Create an empty hash
                 alertUpdateHash=Hash.new
                 # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
                 @alarm_rename_rules.each { |rule| 
-                  puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
+                  # puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
                   alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
                 }
                 # construct the alarms PUT uri for update triggerd alarm withe enriched fields
