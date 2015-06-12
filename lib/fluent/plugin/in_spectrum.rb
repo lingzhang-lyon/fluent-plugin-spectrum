@@ -231,11 +231,12 @@ module Fluent
         pollingStart = Engine.now.to_i
         if @highwatermark.last_records(@state_tag)
           alertStartTime = @highwatermark.last_records(@state_tag)
-          $log.info "Spectrum :: got hwm form state file: #{alertStartTime.to_i}"
+          $log.info "Spectrum :: got hwm from state file: #{alertStartTime.to_i}"
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
           $log.info "Spectrum :: no hwm, got new alert start time: #{alertStartTime.to_i}"
         end
+        alertEndTime = Engine.now.to_i
         pollingEnd = ''
         pollingDuration = ''
         # Format XML for spectrum post
@@ -247,11 +248,18 @@ module Fluent
         <rs:attribute-filter>
           <search-criteria xmlns=\"http://www.ca.com/spectrum/restful/schema/filter\">
           <filtered-models>
-            <greater-than-or-equals>
-              <attribute id=\"0x11f4e\">
-                <value> #{alertStartTime} </value>
-              </attribute>
-            </greater-than-or-equals>
+            <and>
+              <greater-than-or-equals>
+                <attribute id=\"0x11f4e\">
+                  <value> #{alertStartTime} </value>
+                </attribute>
+              </greater-than-or-equals>
+              <less-than>
+                <attribute id=\"0x11f4e\">
+                  <value> #{alertEndTime} </value>
+                </attribute>
+              </less-than>
+            </and>
           </filtered-models>
           </search-criteria>
         </rs:attribute-filter>
@@ -268,7 +276,7 @@ module Fluent
 
         # Processing for multiple alerts returned
         if body['ns1.alarm-response-list']['@total-alarms'].to_i > 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
+          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
           # iterate through each alarm
           body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm'].each do |alarm|
             # Create initial structure
@@ -308,7 +316,7 @@ module Fluent
           end
         # Processing for single alarm returned  
         elsif body['ns1.alarm-response-list']['@total-alarms'].to_i == 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
+          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
           # Create initial structure
           record_hash = Hash.new # temp hash to hold attributes of alarm
           raw_array = Array.new # temp hash to hold attributes of alarm for raw
@@ -345,9 +353,9 @@ module Fluent
           Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
         # No alarms returned
         else
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period < #{alertStartTime.to_i} took #{pollingDuration.to_i} seconds, ended at #{pollingEnd}"
+          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
         end
-        @highwatermark.update_records(pollingEnd,@state_tag)
+        @highwatermark.update_records(alertEndTime,@state_tag)
       end
     end # def input
   end # class SpectrumInput
