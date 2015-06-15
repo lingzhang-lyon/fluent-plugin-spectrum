@@ -117,12 +117,11 @@ module Fluent
                 alertUpdateHash=Hash.new
                 # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
                 @alarm_rename_rules.each { |rule| 
-                  # puts rule[:origin_event_keyname] + ":" + record["event"][rule[:origin_event_keyname]]
                   alertUpdateHash[rule[:key_spectrum_alarm]]=record["event"][rule[:origin_event_keyname]]
                 }
                 # construct the alarms PUT uri for update triggerd alarm withe enriched fields
                 @alarms_urlrest = @alarms_url + record["event"][@alarm_ID_key]
-                # @alarms_urlrest = @alarms_url + record["event"]["source_event_id"]  # argos specific code
+                @alarms_url_part = record["event"][@alarm_ID_key]
                 @attr_count = 0
                 alertUpdateHash.each do |attr, val| 
                   if (val.nil? || val.empty?)
@@ -130,11 +129,11 @@ module Fluent
                   else
                     if (@attr_count == 0)
                       @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                      # @alarms_urlrest = @alarms_urlrest + "?attr=" + attr + "&val=" + to_utf8(val.to_s)
+                      @alarms_url_part = @alarms_url_part + "?attr=" + attr + "&val=" + CGI.escape(val.to_s)
                       @attr_count +=1
                     else
                       @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
-                      # @alarms_urlrest = @alarms_urlrest + "&attr=" + attr + "&val=" + to_utf8(val.to_s)
+                      @alarms_url_part = @alarms_url_part + "&attr=" + attr + "&val=" + CGI.escape(val.to_s)
                       @attr_count +=1
                     end
                   end
@@ -142,8 +141,10 @@ module Fluent
                 $log.info "Spectrum Output :: Rest url for PUT alarms: " + @alarms_urlrest            
                 
                 begin 
-                  # alarmPutRes = alarms_resource.put @alarms_urlrest,:content_type => 'application/json'
-                  alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                  # use predefined resource and nested url
+                  alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
+                  # create new resource each time
+                  # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
                   $log.info "Spectrum Output :: "+ alarmPutRes 
                 end
 
