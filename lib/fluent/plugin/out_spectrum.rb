@@ -1,5 +1,5 @@
 module Fluent
-  class SpectrumOut< Output
+  class SpectrumOut< BufferedOutput
     # First, register the plugin. NAME is the name of this plugin
     # and identifies the plugin in the configuration file.
     Fluent::Plugin.register_output('spectrum', self)
@@ -103,16 +103,16 @@ module Fluent
       es.each {|time,record|        
           ######native spectrum alert ########################
           if (record["event"].has_key?(@spectrum_key) && record["event"][@spectrum_key] == @spectrum_value) 
-            $log.info "Spectrum Output :: The alert is from spectrum" 
+            # $log.info "Spectrum Output :: The alert is from spectrum" 
 
             ## the alert is new, need to update                        
             if (record["event"].has_key?(@new_or_processed_key) && record["event"][@new_or_processed_key] == @new_alert_value )                                 
-              $log.info "Spectrum Output :: The alert is new, need to be updated"
+              # $log.info "Spectrum Output :: The alert is new, need to be updated"
 
               # has @alarm_ID_key(like 'source_event_id') in the alerts, so it can be updated
               # PUT alarm to update enriched fields 
               if record["event"].has_key?(@alarm_ID_key) && !(record["event"][@alarm_ID_key].nil? || record["event"][@alarm_ID_key].empty?) 
-                $log.info "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\""
+                $log.info "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" , the #{@new_or_processed_key} is #{record["event"][@new_or_processed_key]}, it is new alert from spectrum need to be updated"
                 # Create an empty hash
                 alertUpdateHash=Hash.new
                 # Parse thro the array hash that contains name value pairs for hash mapping and add new records to a new hash
@@ -140,26 +140,35 @@ module Fluent
                 end
                 $log.info "Spectrum Output :: Rest url for PUT alarms: " + @alarms_urlrest            
                 
-                begin 
-                  # use predefined resource and nested url
-                  alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
-                  # create new resource each time
-                  # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-                  $log.info "Spectrum Output :: "+ alarmPutRes 
-                end
+                # begin 
+                #   # use predefined resource and nested url
+                #   alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
+                #   # create new resource each time
+                #   # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                #   $log.info "Spectrum Output :: "+ alarmPutRes 
+                # end
 
               else # don't have @alarm_ID_key,  could not be updated
-                $log.error "Spectrum Output :: The alert missing #{@alarm_ID_key},  could not be updated"
+                $log.error "Spectrum Output :: The new alert from spectrum missing #{@alarm_ID_key},  could not be updated"
 
               end
 
             # the alert is aleady processced by argos
             elsif (record["event"].has_key?(@new_or_processed_key) && record["event"][@new_or_processed_key] == @processed_alert_value )            
-              $log.info "Spectrum Output :: The alert is already processed, no need to update enriched fields again"
+              # $log.info "Spectrum Output :: The alert is already processed, no need to update enriched fields again"
+              if record["event"].has_key?(@alarm_ID_key) && !(record["event"][@alarm_ID_key].nil? || record["event"][@alarm_ID_key].empty?) 
+                $log.info "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" , the #{@new_or_processed_key} is #{record["event"][@new_or_processed_key]}, it is processed alert from spectrum that no need to update"
+              else # don't have @alarm_ID_key,  could not be updated
+                $log.error "Spectrum Output :: The processed alert from spectrum missing #{@alarm_ID_key}"
+              end
 
             else
-              $log.info "Spectrum Output :: The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
-
+              # $log.info "Spectrum Output :: The alert don't have correct business_unit_l4, could not determine it's processed or not, also ignore"
+              if record["event"].has_key?(@alarm_ID_key) && !(record["event"][@alarm_ID_key].nil? || record["event"][@alarm_ID_key].empty?) 
+                $log.info "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" , the #{@new_or_processed_key} is #{record["event"][@new_or_processed_key]}, it is alert from spectrum that could not be determined processed or not, just ignore"
+              else # don't have @alarm_ID_key,  could not be updated
+                $log.error "Spectrum Output :: The alert missing #{@alarm_ID_key}"
+              end
             end
 
 
