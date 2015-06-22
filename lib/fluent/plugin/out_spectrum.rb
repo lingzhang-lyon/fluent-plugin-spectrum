@@ -1,5 +1,6 @@
 module Fluent
   class SpectrumOut< BufferedOutput
+  # class SpectrumOut< Output
     # First, register the plugin. NAME is the name of this plugin
     # and identifies the plugin in the configuration file.
     Fluent::Plugin.register_output('spectrum', self)
@@ -140,13 +141,13 @@ module Fluent
                 end
                 $log.info "Spectrum Output :: Rest url for PUT alarms: " + @alarms_urlrest            
                 
-                # begin 
-                #   # use predefined resource and nested url
-                #   alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
-                #   # create new resource each time
-                #   # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
-                #   $log.info "Spectrum Output :: "+ alarmPutRes 
-                # end
+                begin 
+                  # use predefined resource and nested url
+                  alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
+                  # create new resource each time
+                  # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
+                  $log.info "Spectrum Output :: "+ alarmPutRes 
+                end
 
               else # don't have @alarm_ID_key,  could not be updated
                 $log.error "Spectrum Output :: The new alert from spectrum missing #{@alarm_ID_key},  could not be updated"
