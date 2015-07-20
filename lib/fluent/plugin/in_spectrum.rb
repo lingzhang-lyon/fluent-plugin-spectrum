@@ -21,8 +21,9 @@ module Fluent
     config_param  :include_raw,   :bool,    :default => "false"
 
     # to differentiate alerts is new or processed
-    config_param :new_or_processed_key, :string, :default => "CUSTOM_BUSINESS_UNIT_I4" # key in the alert to check if alert is new
-    config_param :new_alert_value, :string, :default => "alert.raw.spectrum"
+    # if not specified, will create a "event_type" field for this purpose and always set to "alert.raw.spectrum"
+    config_param :new_or_processed_key,  :string, :default => nil # like "CUSTOM_EVENT_TYPE" # key in the alert to check if alert is new, the same key(may be renamed) will also be checked in output plugin
+    config_param :new_alert_value,       :string, :default => "alert.raw.spectrum"
     config_param :processed_alert_value, :string, :default => "alert.processed.spectrum"
 
     
@@ -282,7 +283,7 @@ module Fluent
             # Create initial structure
             record_hash = Hash.new # temp hash to hold attributes of alarm
             raw_array = Array.new # temp hash to hold attributes of alarm for raw
-            record_hash['event_type'] = @tag.to_s
+            #record_hash['event_type'] = @tag.to_s
             record_hash['intermediary_source'] = @endpoint.to_s
             record_hash['receive_time_input'] = pollingEnd.to_s
             # iterate though alarm attributes
@@ -304,11 +305,16 @@ module Fluent
             end 
 
             ####### argos specific code: 
-            # if @new_or_processed_key is not null, means it's already processed by argos
-            if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
-              record_hash[@new_or_processed_key] = @new_alert_value
+            # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
+            if @new_or_processed_key.nil? 
+              record_hash['event_type'] = "alert.raw.spectrum"
             else
-              record_hash[@new_or_processed_key] = @processed_alert_value
+              # if the value for @new_or_processed_key is not null, means it's already processed by argos
+              if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+                record_hash[@new_or_processed_key] = @new_alert_value
+              else
+                record_hash[@new_or_processed_key] = @processed_alert_value
+              end
             end
             ####### end of argos specific code
 
@@ -320,7 +326,7 @@ module Fluent
           # Create initial structure
           record_hash = Hash.new # temp hash to hold attributes of alarm
           raw_array = Array.new # temp hash to hold attributes of alarm for raw
-          record_hash['event_type'] = @tag.to_s
+          #record_hash['event_type'] = @tag.to_s
           record_hash['intermediary_source'] = @endpoint.to_s
           record_hash['receive_time_input'] = pollingEnd.to_s
           # iterate though alarm attributes and add to temp hash  
@@ -342,11 +348,16 @@ module Fluent
           end 
 
           ########## argos specific code:
-          # if @new_or_processed_key is not null, means it's already processed by argos
-          if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
-            record_hash[@new_or_processed_key] = @new_alert_value
+          # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
+          if @new_or_processed_key.nil? 
+            record_hash['event_type'] = "alert.raw.spectrum"
           else
-            record_hash[@new_or_processed_key] = @processed_alert_value
+            # if the value for @new_or_processed_key is not null, means it's already processed by argos
+            if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+              record_hash[@new_or_processed_key] = @new_alert_value
+            else
+              record_hash[@new_or_processed_key] = @processed_alert_value
+            end
           end
           ######## end of argos specific code
 
