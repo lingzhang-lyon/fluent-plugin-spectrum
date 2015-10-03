@@ -3,8 +3,8 @@ $:.push File.expand_path("../lib", __FILE__)
 
 Gem::Specification.new do |gem|
   gem.name          = "fluent-plugin-spectrum"
-  gem.version       = "0.0.9.6" # this version focus on using "event_type" for the key to distinguish new/old alert, 3rd/native alert
-  gem.date          = '2015-07-16'
+  gem.version       = "0.0.9.7" 
+  gem.date          = '2015-10-03'
   gem.authors       = ["Alex Pena","Ling Zhang"]
   gem.email         = ["pena.alex@gmail.com", "zhangling.ice@gmail.com"]
   gem.summary       = %q{Fluentd plugin for managing monitoring alerts from CA Spectrum}

@@ -71,16 +71,16 @@ module Fluent
       # Verify configs
       # Stop if required fields are not set
       unless @endpoint && @username && @password
-        raise ConfigError, "Spectrum :: ConfigError 'endpoint' and 'username' and 'password' must be all specified."
+        raise ConfigError, "Spectrum Input :: ConfigError 'endpoint' and 'username' and 'password' must be all specified."
       end
       # Enforce min interval
       if @interval.to_i < INTERVAL_MIN
-        raise ConfigError, "Spectrum :: ConfigError 'interval' must be #{INTERVAL_MIN} or over."
+        raise ConfigError, "Spectrum Input :: ConfigError 'interval' must be #{INTERVAL_MIN} or over."
       end
       # Warn about optional state file
       unless @state_type == "file" || @state_type =="redis"
-        $log.warn "Spectrum :: 'state_type' is not set to file or redis"
-        $log.warn "Spectrum :: state file or redis are recommended to save the last known good timestamp to resume event consuming"
+        $log.warn "Spectrum Input :: 'state_type' is not set to file or redis"
+        $log.warn "Spectrum Input :: state file or redis are recommended to save the last known good timestamp to resume event consuming"
       end
 
       @highwatermark_parameters={
@@ -158,13 +158,13 @@ module Fluent
       # Create XML chunk for attributes we care about
       @attr_of_interest=""
       if(@attributes.upcase === "__ALL__")
-        $log.info "Spectrum :: all attributes"
+        $log.info "Spectrum Input :: all attributes"
         @spectrum_access_code.each do |key, value|
           $log.info "key: #{key},  value: #{value}"
           @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
         end
       else
-        $log.info "Spectrum :: selected attributes"
+        $log.info "Spectrum Input :: selected attributes"
         @attributes.split(",").each {|attr|         
           key=""
           value=""
@@ -178,14 +178,14 @@ module Fluent
             key = @spectrum_access_code.key(value)
           # if it's invalid input, not the hex code or name in the map
           else 
-            raise ConfigError, "Spectrum :: ConfigError attribute '#{attr}' is not in the hash map"
+            raise ConfigError, "Spectrum Input :: ConfigError attribute '#{attr}' is not in the hash map"
           end
           $log.info "key: #{key},  value: #{value}"
           @attr_of_interest += " <rs:requested-attribute id=\"#{key}\"/>"
         }
 
         if !(@custom_attributes.nil? || @custom_attributes.empty?)
-          $log.info "Spectrum :: custom attributes"
+          $log.info "Spectrum Input :: custom attributes"
           @custom_attributes.each{ |row|
             # TO DO
             key = row[:custom_attribute_code]
@@ -232,10 +232,10 @@ module Fluent
         pollingStart = Engine.now.to_i
         if @highwatermark.last_records(@state_tag)
           alertStartTime = @highwatermark.last_records(@state_tag)
-          $log.info "Spectrum :: got hwm from state file: #{alertStartTime.to_i}"
+          $log.info "Spectrum Input :: got hwm from state file: #{alertStartTime.to_i}"
         else
           alertStartTime = (pollingStart.to_i - @interval.to_i)
-          $log.info "Spectrum :: no hwm, got new alert start time: #{alertStartTime.to_i}"
+          $log.info "Spectrum Input :: no hwm, got new alert start time: #{alertStartTime.to_i}"
         end
         alertEndTime = Engine.now.to_i
         pollingEnd = ''
@@ -270,103 +270,124 @@ module Fluent
         # Post to Spectrum and parse results
         begin
           res=resource.post @xml,:content_type => 'application/xml',:accept => 'application/json'
-          body = JSON.parse(res.body)
-          pollingEnd = Time.parse(res.headers[:date]).to_i
-          pollingDuration = Engine.now.to_i - pollingStart
-        end  
+        rescue
+          $log.error "Spectrum Input :: could not poll alarms from spectrum : #{$!.to_s}"
+          res = nil
+        end 
 
-        # Processing for multiple alerts returned
-        if body['ns1.alarm-response-list']['@total-alarms'].to_i > 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
-          # iterate through each alarm
-          body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm'].each do |alarm|
-            # Create initial structure
-            record_hash = Hash.new # temp hash to hold attributes of alarm
-            raw_array = Array.new # temp hash to hold attributes of alarm for raw
-            #record_hash['event_type'] = @tag.to_s
-            record_hash['intermediary_source'] = @endpoint.to_s
-            record_hash['receive_time_input'] = pollingEnd.to_s
-            # iterate though alarm attributes
-            alarm['ns1.attribute'].each do |attribute|
-              key,value = parseAttributes(attribute)
-              record_hash[key] = value
-              if @include_raw.to_s == "true"
-                raw_array << { "#{key}" => "#{value}" }
-              end
-            end
-            # append raw object
-            if @include_raw.to_s == "true"  
-              record_hash[:raw] = raw_array
-            end
-
-            # log the alarm id for each alert
-            if record_hash['ALARM_ID'] 
-              $log.info "Spectrum :: alarm_id \"#{record_hash['ALARM_ID']}\""
-            end 
-
-            ####### argos specific code: 
-            # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
-            if @new_or_processed_key.nil? 
-              record_hash['event_type'] = "alert.raw.spectrum"
-            else
-              # if the value for @new_or_processed_key is not null, means it's already processed by argos
-              if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
-                record_hash[@new_or_processed_key] = @new_alert_value
-              else
-                record_hash[@new_or_processed_key] = @processed_alert_value
-              end
-            end
-            ####### end of argos specific code
-
-            Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
+        if !res.nil? && !res.body.nil?
+          begin           
+            body = JSON.parse(res.body)
+            pollingEnd = Time.parse(res.headers[:date]).to_i
+            pollingDuration = Engine.now.to_i - pollingStart
+          rescue
+            $log.error "Spectrum Input :: could not parse message body to json properly: #{res.body.to_s}"
+            body = nil
           end
-        # Processing for single alarm returned  
-        elsif body['ns1.alarm-response-list']['@total-alarms'].to_i == 1
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
-          # Create initial structure
-          record_hash = Hash.new # temp hash to hold attributes of alarm
-          raw_array = Array.new # temp hash to hold attributes of alarm for raw
-          #record_hash['event_type'] = @tag.to_s
-          record_hash['intermediary_source'] = @endpoint.to_s
-          record_hash['receive_time_input'] = pollingEnd.to_s
-          # iterate though alarm attributes and add to temp hash  
-          body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm']['ns1.attribute'].each do |attribute|
-            key,value = parseAttributes(attribute)
-            record_hash[key] = value
-            if @include_raw.to_s == "true"
-              raw_array << { "#{key}" => "#{value}" }
-            end
-          end
-          # append raw object
-          if @include_raw.to_s == "true"  
-            record_hash[:raw] = raw_array
-          end
-
-          # log the alarm id for each alert
-          if record_hash['ALARM_ID'] 
-            $log.info "Spectrum :: alarm_id \"#{record_hash['ALARM_ID']}\""
-          end 
-
-          ########## argos specific code:
-          # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
-          if @new_or_processed_key.nil? 
-            record_hash['event_type'] = "alert.raw.spectrum"
-          else
-            # if the value for @new_or_processed_key is not null, means it's already processed by argos
-            if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
-              record_hash[@new_or_processed_key] = @new_alert_value
-            else
-              record_hash[@new_or_processed_key] = @processed_alert_value
-            end
-          end
-          ######## end of argos specific code
-
-          Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
-        # No alarms returned
         else
-          $log.info "Spectrum :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
+          body = nil
         end
-        @highwatermark.update_records(alertEndTime,@state_tag)
+
+        
+        if !body.nil?   # if body is not nil, then try to transform and emit it
+          begin
+            # Processing for multiple alerts returned
+            if body['ns1.alarm-response-list']['@total-alarms'].to_i > 1
+              $log.info "Spectrum Input :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
+              # iterate through each alarm
+              body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm'].each do |alarm|
+                # Create initial structure
+                record_hash = Hash.new # temp hash to hold attributes of alarm
+                raw_array = Array.new # temp hash to hold attributes of alarm for raw
+                #record_hash['event_type'] = @tag.to_s
+                record_hash['intermediary_source'] = @endpoint.to_s
+                record_hash['receive_time_input'] = pollingEnd.to_s
+                # iterate though alarm attributes
+                alarm['ns1.attribute'].each do |attribute|
+                  key,value = parseAttributes(attribute)
+                  record_hash[key] = value
+                  if @include_raw.to_s == "true"
+                    raw_array << { "#{key}" => "#{value}" }
+                  end
+                end
+                # append raw object
+                if @include_raw.to_s == "true"  
+                  record_hash[:raw] = raw_array
+                end
+
+                # log the alarm id for each alert
+                if record_hash['ALARM_ID'] 
+                  $log.info "Spectrum Input :: alarm_id \"#{record_hash['ALARM_ID']}\""
+                end 
+
+                ####### argos specific code: 
+                # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
+                if @new_or_processed_key.nil? 
+                  record_hash['event_type'] = "alert.raw.spectrum"
+                else
+                  # if the value for @new_or_processed_key is not null, means it's already processed by argos
+                  if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+                    record_hash[@new_or_processed_key] = @new_alert_value
+                  else
+                    record_hash[@new_or_processed_key] = @processed_alert_value
+                  end
+                end
+                ####### end of argos specific code
+
+                Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
+              end
+            # Processing for single alarm returned  
+            elsif body['ns1.alarm-response-list']['@total-alarms'].to_i == 1
+              $log.info "Spectrum Input :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
+              # Create initial structure
+              record_hash = Hash.new # temp hash to hold attributes of alarm
+              raw_array = Array.new # temp hash to hold attributes of alarm for raw
+              #record_hash['event_type'] = @tag.to_s
+              record_hash['intermediary_source'] = @endpoint.to_s
+              record_hash['receive_time_input'] = pollingEnd.to_s
+              # iterate though alarm attributes and add to temp hash  
+              body['ns1.alarm-response-list']['ns1.alarm-responses']['ns1.alarm']['ns1.attribute'].each do |attribute|
+                key,value = parseAttributes(attribute)
+                record_hash[key] = value
+                if @include_raw.to_s == "true"
+                  raw_array << { "#{key}" => "#{value}" }
+                end
+              end
+              # append raw object
+              if @include_raw.to_s == "true"  
+                record_hash[:raw] = raw_array
+              end
+
+              # log the alarm id for each alert
+              if record_hash['ALARM_ID'] 
+                $log.info "Spectrum Input :: alarm_id \"#{record_hash['ALARM_ID']}\""
+              end 
+
+              ########## argos specific code:
+              # if @new_or_processed_key itself not specified, always set event_type to "alert.raw.spectrum"
+              if @new_or_processed_key.nil? 
+                record_hash['event_type'] = "alert.raw.spectrum"
+              else
+                # if the value for @new_or_processed_key is not null, means it's already processed by argos
+                if (record_hash[@new_or_processed_key].nil? || record_hash[@new_or_processed_key].empty?) # the alert is new, not processed by argos yet
+                  record_hash[@new_or_processed_key] = @new_alert_value
+                else
+                  record_hash[@new_or_processed_key] = @processed_alert_value
+                end
+              end
+              ######## end of argos specific code
+
+              Engine.emit(@tag, record_hash['CREATION_DATE'].to_i,record_hash)
+            # No alarms returned
+            else
+              $log.info "Spectrum Input :: returned #{body['ns1.alarm-response-list']['@total-alarms'].to_i} alarms for period >= #{alertStartTime.to_i} and < #{alertEndTime.to_i} took #{pollingDuration.to_i} seconds"
+            end
+            @highwatermark.update_records(alertEndTime,@state_tag)          
+          rescue 
+            $log.error $!.to_s
+            $log.error "Spectrum Input :: could not transform and emit the message body properly: #{body.to_s} "
+          end
+        end # end of body.nil?
       end
     end # def input
   end # class SpectrumInput
