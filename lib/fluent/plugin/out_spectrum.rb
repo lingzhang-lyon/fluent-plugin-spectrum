@@ -76,11 +76,11 @@ module Fluent
       @alarms_url = 'http://' + @endpoint.to_s + '/spectrum/restful/alarms/'
       @events_url = 'http://' + @endpoint.to_s + '/spectrum/restful/events'
       def events_resource
-        RestClient::Resource.new(@events_url, :user => @user, :password => @pass, :open_timeout => 5, :timeout => (@interval * 3))
+        RestClient::Resource.new(@events_url, :user => @user, :password => @pass, :open_timeout => 10, :timeout => (@interval * 3))
       end
 
       def alarms_resource
-        RestClient::Resource.new(@alarms_url, :user => @user, :password => @pass, :open_timeout => 5, :timeout => (@interval * 3))
+        RestClient::Resource.new(@alarms_url, :user => @user, :password => @pass, :open_timeout => 10, :timeout => (@interval * 3))
       end
 
 
