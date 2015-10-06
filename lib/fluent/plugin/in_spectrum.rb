@@ -314,8 +314,8 @@ module Fluent
         begin
           res=resource.post @xml,:content_type => 'application/xml',:accept => 'application/json'
         rescue
-          $log.error $!.to_s
-          $log.error "Spectrum Input :: could not poll alarms from spectrum"
+          $log.warn $!.to_s
+          $log.warn "Spectrum Input :: could not poll alarms from spectrum"
           res = nil
         end 
 
@@ -325,8 +325,8 @@ module Fluent
             pollingEnd = Time.parse(res.headers[:date]).to_i
             pollingDuration = Engine.now.to_i - pollingStart
           rescue
-            $log.error $!.to_s
-            $log.error "Spectrum Input :: could not parse message body to json properly: #{res.body.to_s}"
+            $log.warn $!.to_s
+            $log.warn "Spectrum Input :: could not parse message body to json properly: #{res.body.to_s}"
             body = nil
           end
         else
@@ -352,12 +352,12 @@ module Fluent
                 parse_and_emit_the_alarm(ns1_alarm, pollingEnd)
                 @highwatermark.update_records(alertEndTime,@state_tag) 
               else 
-                $log.error "Spectrum Input :: ns1.alarm is of unexpected type, not hash or array"
+                $log.warn "Spectrum Input :: ns1.alarm is of unexpected type, not hash or array"
               end              
             end                    
           rescue 
-            $log.error $!.to_s
-            $log.error "Spectrum Input :: could not transform and emit the message body properly: #{body.to_s} "
+            $log.warn $!.to_s
+            $log.warn "Spectrum Input :: could not transform and emit the message body properly: #{body.to_s} "
           end
         end # end of body.nil?
       end

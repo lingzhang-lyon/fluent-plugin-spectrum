@@ -148,8 +148,8 @@ module Fluent
                   alarmPutRes = alarms_resource[@alarms_url_part].put :content_type => 'application/json'
                   $log.info "Spectrum Output :: "+ alarmPutRes 
                 rescue
-                  $log.error $!.to_s
-                  $log.error "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" updating failed "
+                  $log.warn $!.to_s
+                  $log.warn "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" updating failed "
                 end
               end
 
@@ -220,8 +220,8 @@ module Fluent
                 eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
                 $log.info "Spectrum Output :: " + eventPostRes
               rescue
-                $log.error $!.to_s
-                $log.error "Spectrum Output :: ingesting 3rd party alerts to Spectrum failed "
+                $log.warn $!.to_s
+                $log.warn "Spectrum Output :: ingesting 3rd party alerts to Spectrum failed "
               end
             end
 
