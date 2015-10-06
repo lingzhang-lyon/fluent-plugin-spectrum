@@ -143,6 +143,9 @@ module Fluent
                 # create new resource each time
                 # alarmPutRes = RestClient::Resource.new(@alarms_urlrest,@user,@pass).put(@alarms_urlrest,:content_type => 'application/json')
                 $log.info "Spectrum Output :: "+ alarmPutRes 
+              rescue
+                $log.error $!.to_s
+                $log.error "Spectrum Output :: alarm_id \"#{record["event"][@alarm_ID_key]}\" updating failed "
               end
 
             else # don't have @alarm_ID_key,  could not be updated
@@ -205,8 +208,11 @@ module Fluent
               # eventPostRes = RestClient::Resource.new(@events_url,@user,@pass).post(@post_event_xml,:content_type => 'application/xml')
               eventPostRes = events_resource.post @post_event_xml,:content_type => 'application/xml',:accept => 'application/json'
               $log.info "Spectrum Output :: " + eventPostRes
-              eventPostResBody = JSON.parse(eventPostRes.body)
-              @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
+              # eventPostResBody = JSON.parse(eventPostRes.body)
+              # @triggered_event_id = eventPostResBody['ns1.event-response-list']['ns1.event-response']['@id']
+            rescue
+              $log.error $!.to_s
+              $log.error "Spectrum Output :: ingesting 3rd party alerts to Spectrum failed "
             end
 
           end #end of checking alerts 
